@@ -10,6 +10,8 @@ import { useCart } from '../context/CartContext.jsx';
 const TABS = [
   { id: 'overview', label: 'Overview', icon: 'fa-chart-pie' },
   { id: 'sellers', label: 'Verify Sellers', icon: 'fa-user-check' },
+  { id: 'all_sellers', label: 'All Sellers', icon: 'fa-store' }, 
+  { id: 'agents', label: 'Manage Agents', icon: 'fa-users' },
   { id: 'commission', label: 'Commission Rates', icon: 'fa-percent' },
   { id: 'reports', label: 'Reports', icon: 'fa-flag' },
   { id: 'payouts', label: 'Payouts', icon: 'fa-money-bill-transfer' },
@@ -96,151 +98,117 @@ export default function AdminDashboard() {
   const { showToast } = useCart();
   const [tab, setTab] = useState('overview');
 
-  // Overview
+  // Data States
   const [summary, setSummary] = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-  const [summaryError, setSummaryError] = useState('');
-
-  // Verify Sellers
   const [pendingSellers, setPendingSellers] = useState([]);
-  const [sellersLoading, setSellersLoading] = useState(true);
-  const [sellersError, setSellersError] = useState('');
-
-  // Commission
+  const [allSellers, setAllSellers] = useState([]);
+  const [allAgents, setAllAgents] = useState([]);
   const [rules, setRules] = useState([]);
-  const [rulesLoading, setRulesLoading] = useState(true);
-  const [rulesError, setRulesError] = useState('');
-
-  // Reports
   const [reports, setReports] = useState([]);
-  const [reportsLoading, setReportsLoading] = useState(true);
-  const [reportsError, setReportsError] = useState('');
-
-  // Payouts
   const [payouts, setPayouts] = useState([]);
-  const [payoutsLoading, setPayoutsLoading] = useState(true);
-  const [payoutsError, setPayoutsError] = useState('');
+  const [agentsList, setAgentsList] = useState([]); // for payout dropdown
+
+  // Loading States
+  const [loading, setLoading] = useState({ summary: true, pending: true, allSellers: true, allAgents: true, rules: true, reports: true, payouts: true });
 
   /* ---------- Loaders ---------- */
-
   const loadSummary = useCallback(() => {
-    setSummaryLoading(true);
-    setSummaryError('');
-    api('/admin/dashboard')
-      .then((d) => setSummary(d.summary || {}))
-      .catch((e) => setSummaryError(e.message))
-      .finally(() => setSummaryLoading(false));
-  }, []);
+    setLoading(l => ({ ...l, summary: true }));
+    api('/admin/dashboard').then((d) => setSummary(d.summary || {})).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, summary: false })));
+  }, [showToast]);
 
   const loadPendingSellers = useCallback(() => {
-    setSellersLoading(true);
-    setSellersError('');
-    api('/admin/sellers/pending')
-      .then((d) => setPendingSellers(d.sellers || []))
-      .catch((e) => setSellersError(e.message))
-      .finally(() => setSellersLoading(false));
-  }, []);
+    setLoading(l => ({ ...l, pending: true }));
+    api('/admin/sellers/pending').then((d) => setPendingSellers(d.sellers || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, pending: false })));
+  }, [showToast]);
+
+  const loadAllSellers = useCallback(() => {
+    setLoading(l => ({ ...l, allSellers: true }));
+    api('/admin/sellers/all').then((d) => setAllSellers(d.sellers || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, allSellers: false })));
+  }, [showToast]);
+
+  const loadAllAgents = useCallback(() => {
+    setLoading(l => ({ ...l, allAgents: true }));
+    api('/admin/agents/all').then((d) => setAllAgents(d.agents || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, allAgents: false })));
+  }, [showToast]);
 
   const loadRules = useCallback(() => {
-    setRulesLoading(true);
-    setRulesError('');
-    api('/admin/commission-rules')
-      .then((d) => setRules(d.rules || []))
-      .catch((e) => setRulesError(e.message))
-      .finally(() => setRulesLoading(false));
-  }, []);
+    setLoading(l => ({ ...l, rules: true }));
+    api('/admin/commission-rules').then((d) => setRules(d.rules || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, rules: false })));
+  }, [showToast]);
 
   const loadReports = useCallback(() => {
-    setReportsLoading(true);
-    setReportsError('');
-    api('/admin/reports')
-      .then((d) => setReports(d.reports || []))
-      .catch((e) => setReportsError(e.message))
-      .finally(() => setReportsLoading(false));
-  }, []);
+    setLoading(l => ({ ...l, reports: true }));
+    api('/admin/reports').then((d) => setReports(d.reports || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, reports: false })));
+  }, [showToast]);
 
   const loadPayouts = useCallback(() => {
-    setPayoutsLoading(true);
-    setPayoutsError('');
-    api('/admin/payouts')
-      .then((d) => setPayouts(d.payouts || []))
-      .catch((e) => setPayoutsError(e.message))
-      .finally(() => setPayoutsLoading(false));
+    setLoading(l => ({ ...l, payouts: true }));
+    api('/admin/payouts').then((d) => setPayouts(d.payouts || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, payouts: false })));
+  }, [showToast]);
+
+  const loadAgentsDropdown = useCallback(() => {
+    api('/admin/agents').then((d) => setAgentsList(d.agents || [])).catch((e) => console.error(e));
   }, []);
 
   useEffect(() => {
     loadSummary();
     loadPendingSellers();
+    loadAllSellers();
+    loadAllAgents();
     loadRules();
     loadReports();
     loadPayouts();
-  }, [loadSummary, loadPendingSellers, loadRules, loadReports, loadPayouts]);
+    loadAgentsDropdown();
+  }, [loadSummary, loadPendingSellers, loadAllSellers, loadAllAgents, loadRules, loadReports, loadPayouts, loadAgentsDropdown]);
 
   /* ---------- Actions ---------- */
 
   const verifySeller = async (sellerId) => {
-    if (!window.confirm(`Verify seller #${sellerId}? Their products will become visible to customers.`)) return;
+    if (!window.confirm(`Verify seller #${sellerId}?`)) return;
     try {
       await api(`/admin/sellers/${sellerId}/verify`, { method: 'PUT' });
-      showToast?.(`Seller #${sellerId} verified`);
-      loadPendingSellers();
-      loadSummary();
-    } catch (err) {
-      showToast?.(err.message);
-    }
+      showToast?.(`Seller verified`);
+      loadPendingSellers(); loadAllSellers(); loadSummary();
+    } catch (err) { showToast?.(err.message); }
   };
 
-  const inactivateSeller = async (sellerId) => {
-    if (!window.confirm(`Set seller #${sellerId} to Inactive? Their products will be hidden.`)) return;
+  // 👇 Naya Unverify Action
+  const unverifySeller = async (sellerId) => {
+    if (!window.confirm("Unverify this seller? Their products will be hidden until verified again.")) return;
     try {
-      await api(`/admin/sellers/${sellerId}/inactivate`, { method: 'PUT' });
-      showToast?.(`Seller #${sellerId} set to Inactive`);
-      loadPendingSellers();
-      loadSummary();
-    } catch (err) {
-      showToast?.(err.message);
-    }
+      await api(`/admin/sellers/${sellerId}/unverify`, { method: 'PUT' });
+      showToast?.('Seller moved to Pending');
+      loadAllSellers(); loadPendingSellers(); loadSummary();
+    } catch (err) { showToast?.(err.message); }
   };
 
-  const saveCommission = async (categoryId, pct) => {
-    const num = Number(pct);
-    if (!Number.isFinite(num) || num < 0 || num > 100) {
-      showToast?.('Commission must be between 0 and 100');
-      return;
-    }
+  const removeSeller = async (sellerId) => {
+    if (!window.confirm("Remove this seller? Their products will be hidden.")) return;
     try {
-      await api(`/admin/commission-rules/${categoryId}`, {
-        method: 'PUT',
-        body: { commission_percentage: num },
-      });
-      showToast?.('Commission rate saved');
-      loadRules();
-    } catch (err) {
-      showToast?.(err.message);
-    }
+      await api(`/admin/sellers/${sellerId}/remove`, { method: 'PUT' });
+      showToast?.('Seller removed');
+      loadAllSellers(); loadPendingSellers(); loadSummary();
+    } catch (err) { showToast?.(err.message); }
   };
 
-  const resolveReport = async (reportId) => {
-    if (!window.confirm(`Mark report #${reportId} as Resolved?`)) return;
+  const deleteAgent = async (agentId) => {
+    if (!window.confirm("Are you sure you want to delete this agent? This action cannot be undone.")) return;
     try {
-      await api(`/admin/reports/${reportId}/resolve`, { method: 'PUT' });
-      showToast?.(`Report #${reportId} resolved`);
-      loadReports();
-      loadSummary();
-    } catch (err) {
-      showToast?.(err.message);
-    }
+      await api(`/admin/agents/${agentId}`, { method: 'DELETE' });
+      showToast?.('Agent deleted');
+      loadAllAgents(); loadAgentsDropdown();
+    } catch (err) { showToast?.(err.message); }
   };
 
-  const recordPayout = async ({ agent_id, amount, paid_on }) => {
+  const createAgent = async ({ name, contact, password, region_id }) => {
     try {
-      await api('/admin/payouts', {
+      await api('/admin/agents', {
         method: 'POST',
-        body: { agent_id: Number(agent_id), amount: Number(amount), paid_on },
+        body: { name, contact, password, region_id: Number(region_id) }
       });
-      showToast?.('Payout recorded');
-      loadPayouts();
-      loadSummary();
+      showToast?.('Agent created successfully');
+      loadAllAgents(); loadAgentsDropdown();
       return true;
     } catch (err) {
       showToast?.(err.message);
@@ -248,38 +216,46 @@ export default function AdminDashboard() {
     }
   };
 
-  /* ---------- Render ---------- */
+  const saveCommission = async (categoryId, pct) => {
+    const num = Number(pct);
+    if (!Number.isFinite(num) || num < 0 || num > 100) return showToast?.('Commission must be 0-100');
+    try {
+      await api(`/admin/commission-rules/${categoryId}`, { method: 'PUT', body: { commission_percentage: num } });
+      showToast?.('Rate saved'); loadRules();
+    } catch (err) { showToast?.(err.message); }
+  };
 
+  const resolveReport = async (reportId) => {
+    if (!window.confirm(`Mark report #${reportId} as Resolved?`)) return;
+    try {
+      await api(`/admin/reports/${reportId}/resolve`, { method: 'PUT' });
+      showToast?.(`Report resolved`); loadReports(); loadSummary();
+    } catch (err) { showToast?.(err.message); }
+  };
+
+  const recordPayout = async ({ agent_id, amount, paid_on }) => {
+    try {
+      await api('/admin/payouts', { method: 'POST', body: { agent_id: Number(agent_id), amount: Number(amount), paid_on } });
+      showToast?.('Payout recorded'); loadPayouts(); loadSummary();
+      return true;
+    } catch (err) { showToast?.(err.message); return false; }
+  };
+
+  /* ---------- Render ---------- */
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Header */}
         <div className="mb-8">
-          <span className="text-xs uppercase font-bold tracking-widest text-maroon">
-            Admin panel
-          </span>
-          <h1 className="serif-title text-3xl sm:text-4xl md:text-5xl font-bold text-charcoal mt-1">
-            Platform administration
-          </h1>
-          <p className="text-sm text-muted mt-2 max-w-2xl">
-            Verify sellers, manage commission rates, resolve reports, and record agent payouts.
-          </p>
+          <span className="text-xs uppercase font-bold tracking-widest text-maroon">Admin panel</span>
+          <h1 className="serif-title text-3xl sm:text-4xl md:text-5xl font-bold text-charcoal mt-1">Platform administration</h1>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 overflow-x-auto no-scrollbar border-b border-cream-200 mb-6">
           {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition flex items-center gap-2 ${
-                tab === t.id
-                  ? 'border-maroon text-maroon'
-                  : 'border-transparent text-muted hover:text-charcoal'
-              }`}
-            >
-              <i className={`fa-solid ${t.icon} text-xs`} />
-              {t.label}
+            <button key={t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition flex items-center gap-2 ${tab === t.id ? 'border-maroon text-maroon' : 'border-transparent text-muted hover:text-charcoal'}`}>
+              <i className={`fa-solid ${t.icon} text-xs`} />{t.label}
             </button>
           ))}
         </div>
@@ -287,9 +263,7 @@ export default function AdminDashboard() {
         {/* ===== OVERVIEW ===== */}
         {tab === 'overview' && (
           <section>
-            {summaryLoading && <Skeleton rows={2} />}
-            {!summaryLoading && summaryError && <ErrorBox message={summaryError} />}
-            {!summaryLoading && !summaryError && summary && (
+            {loading.summary ? <Skeleton rows={2} /> : summary && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   <StatCard label="Total users" value={summary.total_users} icon="fa-users" tone="maroon" />
@@ -301,34 +275,6 @@ export default function AdminDashboard() {
                   <StatCard label="Delivered orders" value={summary.delivered_orders} icon="fa-truck-fast" tone="emerald" />
                   <StatCard label="Open reports" value={summary.open_reports} icon="fa-flag" tone="gold" />
                 </div>
-
-                <div className="bg-white rounded-2xl border border-cream-200 shadow-card p-6">
-                  <h3 className="font-bold text-charcoal mb-2 flex items-center gap-2">
-                    <i className="fa-solid fa-circle-info text-gold" />
-                    Quick actions
-                  </h3>
-                  <p className="text-xs text-muted mb-4">
-                    Jump to the section you need.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {summary.pending_sellers > 0 && (
-                      <button onClick={() => setTab('sellers')} className="text-xs font-semibold bg-maroon text-cream-50 px-4 py-2 rounded-full hover:bg-maroon-hover transition">
-                        Review {summary.pending_sellers} pending seller{summary.pending_sellers > 1 ? 's' : ''}
-                      </button>
-                    )}
-                    {summary.open_reports > 0 && (
-                      <button onClick={() => setTab('reports')} className="text-xs font-semibold bg-brown text-cream-50 px-4 py-2 rounded-full hover:bg-brown-hover transition">
-                        Resolve {summary.open_reports} open report{summary.open_reports > 1 ? 's' : ''}
-                      </button>
-                    )}
-                    <button onClick={() => setTab('commission')} className="text-xs font-semibold border border-cream-300 text-charcoal px-4 py-2 rounded-full hover:bg-cream-100 transition">
-                      Update commission rates
-                    </button>
-                    <button onClick={() => setTab('payouts')} className="text-xs font-semibold border border-cream-300 text-charcoal px-4 py-2 rounded-full hover:bg-cream-100 transition">
-                      Record a payout
-                    </button>
-                  </div>
-                </div>
               </>
             )}
           </section>
@@ -337,48 +283,26 @@ export default function AdminDashboard() {
         {/* ===== VERIFY SELLERS ===== */}
         {tab === 'sellers' && (
           <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-charcoal">Pending sellers</h2>
-              <button onClick={loadPendingSellers} className="text-xs font-semibold text-maroon hover:underline">
-                <i className="fa-solid fa-rotate-right mr-1" /> Refresh
-              </button>
-            </div>
-            {sellersLoading && <Skeleton rows={3} />}
-            {!sellersLoading && sellersError && <ErrorBox message={sellersError} />}
-            {!sellersLoading && !sellersError && pendingSellers.length === 0 && (
-              <Empty icon="fa-circle-check" title="All caught up" body="No sellers are waiting for verification." />
-            )}
-            {!sellersLoading && !sellersError && pendingSellers.length > 0 && (
+            <h2 className="text-lg font-bold text-charcoal mb-4">Pending sellers</h2>
+            {loading.pending ? <Skeleton rows={3} /> : pendingSellers.length === 0 ? (
+              <Empty icon="fa-circle-check" title="All caught up" body="No sellers waiting for verification." />
+            ) : (
               <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
                 <table className="w-full text-sm">
                   <thead className="bg-cream-100 text-charcoal">
                     <tr>
-                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Seller</th>
-                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Category</th>
-                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Region</th>
-                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Agent</th>
-                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Consent</th>
-                      <th className="px-4 py-3 text-right text-[11px] uppercase tracking-wider font-bold">Actions</th>
+                      <th className="px-4 py-3 text-left font-bold">Seller</th>
+                      <th className="px-4 py-3 text-left font-bold">Agent</th>
+                      <th className="px-4 py-3 text-right font-bold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pendingSellers.map((s) => (
-                      <tr key={s.seller_id} className="border-t border-cream-200 hover:bg-cream-50">
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-charcoal">{s.name}</div>
-                          <div className="text-xs text-muted">{s.contact}</div>
-                        </td>
-                        <td className="px-4 py-3">{s.category_name}</td>
-                        <td className="px-4 py-3">{s.region_name}</td>
-                        <td className="px-4 py-3 text-xs text-muted">{s.managed_by_agent}</td>
-                        <td className="px-4 py-3 text-xs text-muted">{fmtDate(s.consent_date)}</td>
+                      <tr key={s.seller_id} className="border-t border-cream-200">
+                        <td className="px-4 py-3"><div className="font-semibold">{s.name}</div><div className="text-xs text-muted">{s.contact}</div></td>
+                        <td className="px-4 py-3 text-muted">{s.managed_by_agent}</td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => verifySeller(s.seller_id)}
-                            className="text-xs font-semibold bg-maroon text-cream-50 px-3.5 py-1.5 rounded-full hover:bg-maroon-hover transition"
-                          >
-                            Verify
-                          </button>
+                          <button onClick={() => verifySeller(s.seller_id)} className="text-xs font-semibold bg-maroon text-cream-50 px-3.5 py-1.5 rounded-full hover:bg-maroon-hover">Verify</button>
                         </td>
                       </tr>
                     ))}
@@ -386,89 +310,128 @@ export default function AdminDashboard() {
                 </table>
               </div>
             )}
-            <p className="text-xs text-muted mt-4">
-              Note: sellers already verified can be inactivated from the platform by admins via API
-              (PUT /api/admin/sellers/:id/inactivate). This UI shows pending sellers only.
-            </p>
           </section>
         )}
 
-        {/* ===== COMMISSION RATES ===== */}
-        {tab === 'commission' && (
+        {/* ===== ALL SELLERS ===== */}
+        {tab === 'all_sellers' && (
           <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-charcoal">Commission rates per category</h2>
-              <button onClick={loadRules} className="text-xs font-semibold text-maroon hover:underline">
-                <i className="fa-solid fa-rotate-right mr-1" /> Refresh
-              </button>
-            </div>
-            {rulesLoading && <Skeleton rows={3} />}
-            {!rulesLoading && rulesError && <ErrorBox message={rulesError} />}
-            {!rulesLoading && !rulesError && rules.length === 0 && (
-              <Empty icon="fa-percent" title="No commission rules yet" body="Create rules in the backend or add categories first." />
-            )}
-            {!rulesLoading && !rulesError && rules.length > 0 && (
+            <h2 className="text-lg font-bold text-charcoal mb-4">All Registered Sellers</h2>
+            {loading.allSellers ? <Skeleton rows={4} /> : (
               <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
                 <table className="w-full text-sm">
                   <thead className="bg-cream-100 text-charcoal">
                     <tr>
-                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Category</th>
-                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Commission %</th>
-                      <th className="px-4 py-3 text-right text-[11px] uppercase tracking-wider font-bold">Actions</th>
+                      <th className="px-4 py-3 text-left font-bold">Seller</th>
+                      <th className="px-4 py-3 text-left font-bold">Agent</th>
+                      <th className="px-4 py-3 text-left font-bold">Status</th>
+                      <th className="px-4 py-3 text-right font-bold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rules.map((r) => (
-                      <CommissionRow key={r.rule_id || r.category_id} rule={r} onSave={saveCommission} />
+                    {allSellers.map(s => (
+                      <tr key={s.seller_id} className="border-t border-cream-200 hover:bg-cream-50">
+                        <td className="px-4 py-3 font-semibold text-charcoal">{s.name}</td>
+                        <td className="px-4 py-3 text-muted">{s.managed_by_agent}</td>
+                        <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                        <td className="px-4 py-3 text-right">
+                          {/* 👇 Unverify Button */}
+                          {s.status === 'Verified' && (
+                            <button 
+                              onClick={() => unverifySeller(s.seller_id)} 
+                              className="text-xs text-gold-soft font-semibold border border-gold/30 px-3 py-1 rounded hover:bg-gold-bg mr-2 transition"
+                            >
+                              Unverify
+                            </button>
+                          )}
+                          
+                          {/* Remove Button */}
+                          {s.status !== 'Inactive' && (
+                            <button onClick={() => removeSeller(s.seller_id)} className="text-xs text-red-600 font-semibold border border-red-200 px-3 py-1 rounded hover:bg-red-50 transition">
+                              Remove
+                            </button>
+                          )}
+                        </td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-            <p className="text-xs text-muted mt-4">
-              Rates are applied when an order becomes <b>Delivered</b> (SRS FR-12). Changing a rate does not affect past orders.
-            </p>
+          </section>
+        )}
+
+        {/* ===== MANAGE AGENTS ===== */}
+        {tab === 'agents' && (
+          <section>
+            <div className="grid lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <h2 className="text-lg font-bold text-charcoal mb-4">All Agents</h2>
+                {loading.allAgents ? <Skeleton rows={4} /> : (
+                  <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
+                    <table className="w-full text-sm">
+                      <thead className="bg-cream-100 text-charcoal">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-bold">Agent Name</th>
+                          <th className="px-4 py-3 text-left font-bold">Contact / Region</th>
+                          <th className="px-4 py-3 text-right font-bold">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allAgents.map(a => (
+                          <tr key={a.agent_id} className="border-t border-cream-200 hover:bg-cream-50">
+                            <td className="px-4 py-3 font-semibold text-charcoal">{a.name}</td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs">{a.contact}</div>
+                              <div className="text-xs text-muted">{a.region_name}</div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                               <button onClick={() => deleteAgent(a.agent_id)} className="text-xs text-red-600 font-semibold border border-red-200 px-3 py-1 rounded hover:bg-red-50">Delete</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              <div>
+                 <h2 className="text-lg font-bold text-charcoal mb-4">Add New Agent</h2>
+                 <AddAgentForm onAdd={createAgent} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ===== COMMISSION ===== */}
+        {tab === 'commission' && (
+          <section>
+            <h2 className="text-lg font-bold text-charcoal mb-4">Commission rates</h2>
+            {loading.rules ? <Skeleton rows={3} /> : (
+              <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
+                <table className="w-full text-sm">
+                  <thead className="bg-cream-100"><tr><th className="px-4 py-3 text-left">Category</th><th className="px-4 py-3 text-left">Rate %</th><th className="px-4 py-3 text-right">Save</th></tr></thead>
+                  <tbody>{rules.map((r) => <CommissionRow key={r.category_id} rule={r} onSave={saveCommission} />)}</tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
 
         {/* ===== REPORTS ===== */}
         {tab === 'reports' && (
           <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-charcoal">All reports</h2>
-              <button onClick={loadReports} className="text-xs font-semibold text-maroon hover:underline">
-                <i className="fa-solid fa-rotate-right mr-1" /> Refresh
-              </button>
-            </div>
-            {reportsLoading && <Skeleton rows={3} />}
-            {!reportsLoading && reportsError && <ErrorBox message={reportsError} />}
-            {!reportsLoading && !reportsError && reports.length === 0 && (
-              <Empty icon="fa-flag" title="No reports" body="Customers and agents haven't reported any orders yet." />
-            )}
-            {!reportsLoading && !reportsError && reports.length > 0 && (
+            <h2 className="text-lg font-bold text-charcoal mb-4">All reports</h2>
+            {loading.reports ? <Skeleton rows={3} /> : reports.length === 0 ? <Empty icon="fa-flag" title="No reports" body="All clear." /> : (
               <div className="space-y-3">
                 {reports.map((r) => (
-                  <div key={r.report_id} className="bg-white rounded-2xl border border-cream-200 shadow-card p-5">
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-charcoal text-sm">Report #{r.report_id}</span>
-                          <StatusBadge status={r.status} />
-                        </div>
-                        <p className="text-xs text-muted mb-2">
-                          Order #{r.order_id} · Filed by {r.filed_by} · {fmtDateTime(r.created_at)}
-                        </p>
-                        <p className="text-sm text-charcoal">{r.description}</p>
-                      </div>
-                      {r.status === 'Open' && (
-                        <button
-                          onClick={() => resolveReport(r.report_id)}
-                          className="text-xs font-semibold bg-maroon text-cream-50 px-4 py-2 rounded-full hover:bg-maroon-hover transition flex-shrink-0"
-                        >
-                          Resolve
-                        </button>
-                      )}
+                  <div key={r.report_id} className="bg-white rounded-2xl border border-cream-200 p-5 flex justify-between items-start">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1"><span className="font-semibold text-charcoal">Report #{r.report_id}</span><StatusBadge status={r.status} /></div>
+                      <p className="text-xs text-muted mb-2">Order #{r.order_id} · By {r.filed_by}</p>
+                      <p className="text-sm text-charcoal">{r.description}</p>
                     </div>
+                    {r.status === 'Open' && <button onClick={() => resolveReport(r.report_id)} className="bg-maroon text-cream-50 px-4 py-2 rounded-full text-xs">Resolve</button>}
                   </div>
                 ))}
               </div>
@@ -480,49 +443,19 @@ export default function AdminDashboard() {
         {tab === 'payouts' && (
           <section className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             <div className="lg:col-span-3">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-charcoal">Payout history</h2>
-                <button onClick={loadPayouts} className="text-xs font-semibold text-maroon hover:underline">
-                  <i className="fa-solid fa-rotate-right mr-1" /> Refresh
-                </button>
-              </div>
-              {payoutsLoading && <Skeleton rows={3} />}
-              {!payoutsLoading && payoutsError && <ErrorBox message={payoutsError} />}
-              {!payoutsLoading && !payoutsError && payouts.length === 0 && (
-                <Empty icon="fa-money-bill-transfer" title="No payouts yet" body="Record your first agent payout using the form." />
-              )}
-              {!payoutsLoading && !payoutsError && payouts.length > 0 && (
+              <h2 className="text-lg font-bold text-charcoal mb-4">Payout history</h2>
+              {loading.payouts ? <Skeleton rows={3} /> : (
                 <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
                   <table className="w-full text-sm">
-                    <thead className="bg-cream-100 text-charcoal">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Payout</th>
-                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Agent</th>
-                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Amount</th>
-                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {payouts.map((p) => (
-                        <tr key={p.payout_id} className="border-t border-cream-200">
-                          <td className="px-4 py-3 font-semibold">#{p.payout_id}</td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-charcoal">{p.agent_name}</div>
-                            <div className="text-xs text-muted">Agent ID {p.agent_id}</div>
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-maroon">{fmtMoney(p.amount)}</td>
-                          <td className="px-4 py-3 text-xs text-muted">{fmtDate(p.paid_on)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
+                    <thead className="bg-cream-100"><tr><th className="px-4 py-3 text-left">ID</th><th className="px-4 py-3 text-left">Agent</th><th className="px-4 py-3 text-left">Amount</th><th className="px-4 py-3 text-left">Date</th></tr></thead>
+                    <tbody>{payouts.map((p) => (<tr key={p.payout_id} className="border-t border-cream-200"><td className="px-4 py-3">#{p.payout_id}</td><td className="px-4 py-3">{p.agent_name}</td><td className="px-4 py-3 font-semibold text-maroon">{fmtMoney(p.amount)}</td><td className="px-4 py-3 text-xs text-muted">{fmtDate(p.paid_on)}</td></tr>))}</tbody>
                   </table>
                 </div>
               )}
             </div>
-
             <div className="lg:col-span-2">
               <h2 className="text-lg font-bold text-charcoal mb-4">Record a payout</h2>
-              <PayoutForm onSubmit={recordPayout} />
+              <PayoutForm onSubmit={recordPayout} agents={agentsList} />
             </div>
           </section>
         )}
@@ -536,22 +469,12 @@ export default function AdminDashboard() {
    ============================================================ */
 
 function StatCard({ label, value, icon, tone = 'maroon' }) {
-  const tones = {
-    maroon: 'bg-maroon-light text-maroon',
-    brown: 'bg-brown-light text-brown',
-    gold: 'bg-gold-bg text-gold-soft',
-    emerald: 'bg-emerald-50 text-emerald-700',
-  };
+  const tones = { maroon: 'bg-maroon-light text-maroon', brown: 'bg-brown-light text-brown', gold: 'bg-gold-bg text-gold-soft', emerald: 'bg-emerald-50 text-emerald-700' };
   return (
     <div className="bg-white p-5 rounded-2xl border border-cream-200 shadow-card">
       <div className="flex items-start gap-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${tones[tone]}`}>
-          <i className={`fa-solid ${icon}`} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-widest text-muted font-semibold">{label}</p>
-          <p className="serif-title text-2xl font-bold text-charcoal mt-0.5">{value ?? '—'}</p>
-        </div>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tones[tone]}`}><i className={`fa-solid ${icon}`} /></div>
+        <div><p className="text-[11px] uppercase text-muted font-semibold">{label}</p><p className="serif-title text-2xl font-bold text-charcoal mt-0.5">{value ?? '—'}</p></div>
       </div>
     </div>
   );
@@ -561,120 +484,54 @@ function CommissionRow({ rule, onSave }) {
   const [pct, setPct] = useState(String(rule.commission_percentage));
   const [saving, setSaving] = useState(false);
   const dirty = String(rule.commission_percentage) !== String(pct);
-
-  const handleSave = async () => {
-    setSaving(true);
-    await onSave(rule.category_id, pct);
-    setSaving(false);
-  };
-
   return (
     <tr className="border-t border-cream-200">
       <td className="px-4 py-3 font-medium text-charcoal">{rule.category_name}</td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2 max-w-[160px]">
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            value={pct}
-            onChange={(e) => setPct(e.target.value)}
-            className={inputClass}
-          />
-          <span className="text-xs text-muted">%</span>
-        </div>
-      </td>
-      <td className="px-4 py-3 text-right">
-        <button
-          onClick={handleSave}
-          disabled={!dirty || saving}
-          className="text-xs font-semibold bg-maroon text-cream-50 px-3.5 py-1.5 rounded-full hover:bg-maroon-hover transition disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
-        </button>
-      </td>
+      <td className="px-4 py-3"><div className="flex items-center gap-2 max-w-[120px]"><input type="number" value={pct} onChange={(e) => setPct(e.target.value)} className={inputClass} /><span>%</span></div></td>
+      <td className="px-4 py-3 text-right"><button onClick={async () => { setSaving(true); await onSave(rule.category_id, pct); setSaving(false); }} disabled={!dirty || saving} className="bg-maroon text-cream-50 px-3.5 py-1.5 rounded-full text-xs disabled:opacity-50">{saving ? '...' : dirty ? 'Save' : 'Saved'}</button></td>
     </tr>
   );
 }
 
-function PayoutForm({ onSubmit }) {
-  const [form, setForm] = useState({
-    agent_id: '',
-    amount: '',
-    paid_on: new Date().toISOString().slice(0, 10),
-  });
+function PayoutForm({ onSubmit, agents }) {
+  const [form, setForm] = useState({ agent_id: '', amount: '', paid_on: new Date().toISOString().slice(0, 10) });
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  return (
+    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit(form); setSaving(false); if (ok) setForm({ agent_id: '', amount: '', paid_on: form.paid_on }); }} className="bg-white rounded-2xl border border-cream-200 shadow-card p-5 space-y-4">
+      <Field label="Select Agent">
+        <select value={form.agent_id} onChange={(e) => setForm({ ...form, agent_id: e.target.value })} className={inputClass} required>
+          <option value="">-- Select Agent --</option>
+          {agents.map((a) => <option key={a.agent_id} value={a.agent_id}>{a.name} (ID: {a.agent_id})</option>)}
+        </select>
+      </Field>
+      <Field label="Amount (Rs.)"><input type="number" min="1" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} required /></Field>
+      <Field label="Paid on"><input type="date" value={form.paid_on} onChange={(e) => setForm({ ...form, paid_on: e.target.value })} className={inputClass} required /></Field>
+      <button type="submit" disabled={saving} className="w-full bg-maroon text-cream-50 py-3 rounded-full font-medium text-sm">{saving ? 'Saving...' : 'Record payout'}</button>
+    </form>
+  );
+}
 
-  const handle = async (e) => {
-    e.preventDefault();
-    setErr('');
-    if (!form.agent_id || !form.amount || !form.paid_on) {
-      setErr('All fields are required.');
-      return;
-    }
-    if (!(Number(form.amount) > 0)) {
-      setErr('Amount must be greater than 0.');
-      return;
-    }
-    setSaving(true);
-    const ok = await onSubmit(form);
-    setSaving(false);
-    if (ok) {
-      setForm({ agent_id: '', amount: '', paid_on: new Date().toISOString().slice(0, 10) });
-    }
-  };
+function AddAgentForm({ onAdd }) {
+  const [form, setForm] = useState({ name: '', contact: '', password: '', region_id: '' });
+  const [saving, setSaving] = useState(false);
+  const [regions, setRegions] = useState([]);
+
+  useEffect(() => {
+    api('/regions').then(d => setRegions(d.regions || [])).catch(() => {});
+  }, []);
 
   return (
-    <form onSubmit={handle} className="bg-white rounded-2xl border border-cream-200 shadow-card p-5 space-y-4">
-      <Field label="Agent ID" htmlFor="agent_id" hint="Enter the numeric agent ID (from Users/Agents table).">
-        <input
-          id="agent_id"
-          type="number"
-          min="1"
-          value={form.agent_id}
-          onChange={set('agent_id')}
-          placeholder="e.g. 5"
-          className={inputClass}
-          required
-        />
+    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onAdd(form); setSaving(false); if (ok) setForm({ name: '', contact: '', password: '', region_id: '' }); }} className="bg-white rounded-2xl border border-cream-200 shadow-card p-5 space-y-4">
+      <Field label="Name"><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} required /></Field>
+      <Field label="Contact"><input type="text" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} className={inputClass} required /></Field>
+      <Field label="Password"><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inputClass} required /></Field>
+      <Field label="Region">
+        <select value={form.region_id} onChange={(e) => setForm({ ...form, region_id: e.target.value })} className={inputClass} required>
+          <option value="">-- Select Region --</option>
+          {regions.map((r) => <option key={r.region_id} value={r.region_id}>{r.name}</option>)}
+        </select>
       </Field>
-      <Field label="Amount (Rs.)" htmlFor="amount">
-        <input
-          id="amount"
-          type="number"
-          min="0.01"
-          step="0.01"
-          value={form.amount}
-          onChange={set('amount')}
-          placeholder="e.g. 5000"
-          className={inputClass}
-          required
-        />
-      </Field>
-      <Field label="Paid on" htmlFor="paid_on">
-        <input
-          id="paid_on"
-          type="date"
-          value={form.paid_on}
-          onChange={set('paid_on')}
-          className={inputClass}
-          required
-        />
-      </Field>
-      {err && <ErrorBox message={err} />}
-      <button
-        type="submit"
-        disabled={saving}
-        className="w-full bg-maroon hover:bg-maroon-hover disabled:opacity-60 text-cream-50 font-medium py-3 rounded-full text-sm shadow-warm transition"
-      >
-        {saving ? 'Recording…' : 'Record payout'}
-      </button>
-      <p className="text-[11px] text-muted text-center">
-        Pending commission = total earned − total paid. Check the Overview tab for totals.
-      </p>
+      <button type="submit" disabled={saving} className="w-full bg-maroon text-cream-50 py-3 rounded-full font-medium text-sm">{saving ? 'Adding...' : 'Add Agent'}</button>
     </form>
   );
 }

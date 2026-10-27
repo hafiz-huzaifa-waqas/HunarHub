@@ -49,12 +49,18 @@ export function CartProvider({ children }) {
 
   const clearCart = () => setCart([]);
 
+    const removeFromCart = (id) => {
+    setCart((prev) => prev.filter((item) => item.id !== id));
+    showToast('Item removed from basket');
+  };
+
   const count = cart.reduce((s, i) => s + i.qty, 0);
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
   return (
     <CartContext.Provider
-      value={{ cart, count, subtotal, addToCart, updateQty, clearCart, cartOpen, setCartOpen, toast, showToast }}
+      value={{ cart, count, subtotal, addToCart, updateQty, removeFromCart, clearCart, 
+        cartOpen, setCartOpen, toast, showToast }}
     >
       {children}
     </CartContext.Provider>

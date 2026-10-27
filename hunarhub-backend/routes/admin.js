@@ -8,7 +8,6 @@ const router = express.Router();
 router.use(authenticate, requireRole('Admin'));
  
 // ---------- GET /api/admin/dashboard ----------
-// Summary counts for admin dashboard
 router.get('/dashboard', async (req, res) => {
   try {
     const counts = await pool.query(`
@@ -238,4 +237,154 @@ router.get('/payouts', async (req, res) => {
   }
 });
  
+// GET /api/admin/agents (Agents list for dropdown)
+router.get('/agents', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT a.agent_id, u.name 
+       FROM agents a
+       JOIN users u ON u.user_id = a.agent_id
+       ORDER BY u.name`
+    );
+    res.json({ count: result.rowCount, agents: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 1. GET ALL SELLERS
+router.get('/sellers/all', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.seller_id, s.name, s.contact, s.status, s.consent_date,
+              r.name AS region_name, c.name AS category_name,
+              u.name AS managed_by_agent
+       FROM sellers s
+       JOIN regions r ON r.region_id = s.region_id
+       JOIN categories c ON c.category_id = s.category_id
+       JOIN agents a ON a.agent_id = s.managed_by_agent_id
+       JOIN users u ON u.user_id = a.agent_id
+       ORDER BY s.seller_id DESC`
+    );
+    res.json({ count: result.rowCount, sellers: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 2. REMOVE/INACTIVATE SELLER
+router.put('/sellers/:id/remove', async (req, res) => {
+  const sellerId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(sellerId)) return res.status(400).json({ error: 'Invalid seller id' });
+  try {
+    const result = await pool.query(
+      `UPDATE sellers SET status = 'Inactive' WHERE seller_id = $1 RETURNING seller_id, name, status`,
+      [sellerId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Seller not found' });
+    res.json({ message: 'Seller removed (inactivated)', seller: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 3. GET ALL AGENTS (Detailed) - FIXED QUERY
+router.get('/agents/all', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT a.agent_id, u.name, u.contact, r.name AS region_name,
+              (SELECT COUNT(*) FROM sellers s WHERE s.managed_by_agent_id = a.agent_id) AS total_sellers,
+              COALESCE(ae.total_earned, 0) AS total_earned,
+              COALESCE(ae.total_paid, 0) AS total_paid
+       FROM agents a
+       JOIN users u ON u.user_id = a.agent_id
+       JOIN regions r ON r.region_id = a.region_id
+       LEFT JOIN agent_earnings ae ON ae.agent_id = a.agent_id
+       ORDER BY a.agent_id DESC`
+    );
+    res.json({ count: result.rowCount, agents: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 4. DELETE AGENT
+router.delete('/agents/:id', async (req, res) => {
+  const agentId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(agentId)) return res.status(400).json({ error: 'Invalid agent id' });
+  try {
+    const check = await pool.query('SELECT 1 FROM sellers WHERE managed_by_agent_id = $1', [agentId]);
+    if (check.rowCount > 0) {
+      return res.status(400).json({ error: 'Cannot delete agent with active sellers. Remove sellers first.' });
+    }
+    await pool.query('DELETE FROM agents WHERE agent_id = $1', [agentId]);
+    await pool.query('DELETE FROM users WHERE user_id = $1', [agentId]);
+    res.json({ message: 'Agent deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 5. ADD NEW AGENT
+const bcrypt = require('bcrypt'); 
+
+router.post('/agents', async (req, res) => {
+  const { name, contact, password, region_id } = req.body;
+  if (!name || !contact || !password || !region_id) {
+    return res.status(400).json({ error: 'name, contact, password, region_id required' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const hash = await bcrypt.hash(password, 10);
+    const userRes = await client.query(
+      `INSERT INTO users (name, contact, password_hash, role) VALUES ($1, $2, $3, 'Agent') RETURNING user_id`,
+      [name, contact, hash]
+    );
+    const agentId = userRes.rows[0].user_id;
+    await client.query(`INSERT INTO agents (agent_id, region_id) VALUES ($1, $2)`, [agentId, region_id]);
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Agent created', agent: { agent_id: agentId, name, contact } });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.code === '23505') return res.status(409).json({ error: 'Contact already exists' });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// ==========================================
+// UNVERIFY SELLER (Move back to Pending)
+// ==========================================
+router.put('/sellers/:id/unverify', async (req, res) => {
+  const sellerId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(sellerId)) return res.status(400).json({ error: 'Invalid seller id' });
+  
+  try {
+    const result = await pool.query(
+      `UPDATE sellers 
+       SET status = 'Pending', verified_by_admin_id = NULL 
+       WHERE seller_id = $1 AND status = 'Verified' 
+       RETURNING seller_id, name, status`,
+      [sellerId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(400).json({ error: 'Seller not found or not in Verified status' });
+    }
+    
+    res.json({ message: 'Seller unverified', seller: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

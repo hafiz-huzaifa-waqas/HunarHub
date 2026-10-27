@@ -5,6 +5,7 @@ import Signup from './pages/Signup.jsx';
 import CustomerDashboard from './pages/CustomerDashboard.jsx';
 import AgentDashboard from './pages/AgentDashboard.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
+import SellerProfile from './pages/SellerProfile.jsx'; // 👈 Naya import add hua
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 export default function App() {
@@ -13,6 +14,9 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+
+      {/* 👇 Naya Route Seller Profile ke liye */}
+      <Route path="/seller/:id" element={<SellerProfile />} />
 
       <Route
         path="/customer"

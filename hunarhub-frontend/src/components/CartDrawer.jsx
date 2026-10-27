@@ -7,14 +7,14 @@ import { formatPrice, SHIPPING_FEE } from '../utils/products.js';
 import { ProductImage } from './ProductCard.jsx';
 
 export default function CartDrawer() {
-  const { cart, count, subtotal, updateQty, clearCart, cartOpen, setCartOpen, showToast } = useCart();
+  // 👇 Yahan removeFromCart add kiya hai
+  const { cart, count, subtotal, updateQty, removeFromCart, clearCart, cartOpen, setCartOpen, showToast } = useCart();
   const { user, isLoggedIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
 
-  // POST /api/customer/orders  { seller_id, items: [{ product_id, quantity }] }
   const checkout = async () => {
     setError('');
     if (cart.length === 0) return showToast('Your basket is empty.');
@@ -42,7 +42,6 @@ export default function CartDrawer() {
       showToast(`Order #${data.order_id} placed`);
       navigate('/customer', { state: { placed: data.order_id } });
     } catch (err) {
-      // e.g. "Insufficient stock for product 3 (available 1)"
       setError(err.message);
     } finally {
       setPlacing(false);
@@ -86,17 +85,30 @@ export default function CartDrawer() {
             </div>
           ) : (
             cart.map((item) => (
-              <div key={item.id} className="bg-white p-3.5 rounded-xl border border-cream-200 flex items-center space-x-3 shadow-sm">
+              <div key={item.id} className="bg-white p-3.5 rounded-xl border border-cream-200 flex items-center space-x-3 shadow-sm relative group">
                 <ProductImage src={item.image} alt={item.title} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                
                 <div className="flex-1 min-w-0">
                   <h4 className="text-xs font-bold text-charcoal truncate">{item.title}</h4>
                   <p className="text-[10px] text-brown font-medium">{item.seller}</p>
                   <p className="text-xs font-bold text-maroon mt-1">{formatPrice(item.price * item.qty)}</p>
                 </div>
-                <div className="flex items-center space-x-2 bg-cream-100 rounded-lg p-1 border border-cream-200">
-                  <button onClick={() => updateQty(item.id, -1)} aria-label="Decrease" className="w-5 h-5 flex items-center justify-center text-xs font-bold hover:bg-white rounded">-</button>
-                  <span className="text-xs font-bold w-4 text-center">{item.qty}</span>
-                  <button onClick={() => updateQty(item.id, 1)} aria-label="Increase" className="w-5 h-5 flex items-center justify-center text-xs font-bold hover:bg-white rounded">+</button>
+                
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center space-x-2 bg-cream-100 rounded-lg p-1 border border-cream-200">
+                    <button onClick={() => updateQty(item.id, -1)} aria-label="Decrease" className="w-5 h-5 flex items-center justify-center text-xs font-bold hover:bg-white rounded transition">-</button>
+                    <span className="text-xs font-bold w-4 text-center">{item.qty}</span>
+                    <button onClick={() => updateQty(item.id, 1)} aria-label="Increase" className="w-5 h-5 flex items-center justify-center text-xs font-bold hover:bg-white rounded transition">+</button>
+                  </div>
+                  
+                  {/* 👇 Naya Remove (Trash) Button */}
+                  <button 
+                    onClick={() => removeFromCart(item.id)} 
+                    aria-label="Remove item" 
+                    className="text-[10px] text-muted hover:text-red-600 font-semibold transition flex items-center gap-1"
+                  >
+                    <i className="fa-solid fa-trash-can"></i> Remove
+                  </button>
                 </div>
               </div>
             ))

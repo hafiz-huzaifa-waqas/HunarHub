@@ -32,19 +32,27 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
-  const visible = useMemo(
-    () =>
-      products.filter((p) => {
-        const okCat = filter === 'all' || p.filter === filter;
-        const okSearch =
-          !query ||
-          p.title.toLowerCase().includes(query) ||
-          p.seller.toLowerCase().includes(query) ||
-          p.categoryName.toLowerCase().includes(query);
-        return okCat && okSearch;
-      }),
-    [products, filter, query]
-  );
+  // Filter products and keep only ONE per seller
+  const visible = useMemo(() => {
+    const filtered = products.filter((p) => {
+      const okCat = filter === 'all' || p.filter === filter;
+      const okSearch =
+        !query ||
+        p.title.toLowerCase().includes(query) ||
+        p.seller.toLowerCase().includes(query) ||
+        p.categoryName.toLowerCase().includes(query);
+      return okCat && okSearch;
+    });
+
+    // Unique Seller Logic: Har seller ka sirf pehla product dikhao
+    const uniqueSellers = new Map();
+    filtered.forEach((product) => {
+      if (!uniqueSellers.has(product.sellerId)) {
+        uniqueSellers.set(product.sellerId, product);
+      }
+    });
+    return Array.from(uniqueSellers.values());
+  }, [products, filter, query]);
 
   return (
     <Layout>

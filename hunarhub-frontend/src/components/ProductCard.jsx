@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { formatPrice } from '../utils/products.js';
 
 export function ProductImage({ src, alt, className = '' }) {
@@ -30,18 +31,27 @@ export default function ProductCard({ product, onQuickView, onAdd }) {
 
   return (
     <div className="bg-white rounded-2xl border border-cream-200 overflow-hidden shadow-card hover:shadow-warm transition-all duration-300 flex flex-col justify-between group">
+      
+      {/* Image Container with QuickView onClick */}
       <div className="relative overflow-hidden aspect-[4/3] bg-cream-100 cursor-pointer" onClick={() => onQuickView(product)}>
         <ProductImage
           src={product.image}
           alt={product.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
-        <div className="absolute top-3 left-3">
-          <span className="bg-white/95 backdrop-blur text-brown text-[10px] font-bold px-2.5 py-1 rounded-full border border-cream-200 shadow-sm flex items-center space-x-1">
+        
+        {/* Seller Link Badge */}
+        <div className="absolute top-3 left-3 z-10">
+          <Link 
+            to={`/seller/${product.sellerId}`}
+            onClick={(e) => e.stopPropagation()} // Zaroori hai taake product click na ho, sirf link khule
+            className="bg-white/95 backdrop-blur text-brown text-[10px] font-bold px-2.5 py-1 rounded-full border border-cream-200 shadow-sm flex items-center space-x-1 hover:bg-maroon hover:text-white transition"
+          >
             <i className="fa-solid fa-circle-check text-maroon text-[9px]"></i>
             <span>{product.seller}</span>
-          </span>
+          </Link>
         </div>
+        
         {soldOut && (
           <span className="absolute top-3 right-3 bg-charcoal text-white text-[10px] font-bold px-2.5 py-1 rounded-full">Sold out</span>
         )}
@@ -59,7 +69,7 @@ export default function ProductCard({ product, onQuickView, onAdd }) {
           >
             {product.title}
           </h3>
-          {/* ⭐ NEW: Rating */}
+          {/* ⭐ Rating */}
           <div className="mt-1.5">
             <RatingStars value={product.avgRating} count={product.reviewCount} />
           </div>

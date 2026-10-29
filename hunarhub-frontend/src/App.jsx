@@ -1,21 +1,26 @@
 import { Routes, Route } from 'react-router-dom';
+import LandingPage from './pages/LandingPage.jsx'; // 👈 Naya Landing Page import kiya
 import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import CustomerDashboard from './pages/CustomerDashboard.jsx';
 import AgentDashboard from './pages/AgentDashboard.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
-import SellerProfile from './pages/SellerProfile.jsx'; // 👈 Naya import add hua
+import SellerProfile from './pages/SellerProfile.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      {/* 👇 Root (/) par ab Landing Page chalega */}
+      <Route path="/" element={<LandingPage />} />
+      
+      {/* 👇 Purana Home ab /home par chala gaya */}
+      <Route path="/home" element={<Home />} />
+
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
 
-      {/* 👇 Naya Route Seller Profile ke liye */}
       <Route path="/seller/:id" element={<SellerProfile />} />
 
       <Route

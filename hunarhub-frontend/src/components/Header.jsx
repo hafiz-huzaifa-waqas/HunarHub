@@ -11,17 +11,17 @@ export default function Header() {
   const [q, setQ] = useState('');
 
   const roleLink = isLoggedIn ? ROLE_LINK[user.role] : null;
-  // Only customers shop, so only they get the basket button.
   const showCart = !isLoggedIn || user.role === 'Customer';
 
   const onSearch = (e) => {
     e.preventDefault();
-    navigate(q.trim() ? `/?q=${encodeURIComponent(q.trim())}#featured` : '/');
+    // 👇 Change 1: Search ab /home par jayega
+    navigate(q.trim() ? `/home?q=${encodeURIComponent(q.trim())}#featured` : '/home');
   };
 
   const onLogout = () => {
     logout();
-    navigate('/');
+    navigate('/home'); // 👇 Change 2: Logout ke baad /home par bhejo
   };
 
   return (
@@ -41,7 +41,9 @@ export default function Header() {
       <header className="sticky top-0 z-40 bg-cream-50/90 backdrop-blur-md border-b border-cream-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20 gap-4">
-            <Link to="/" className="flex items-center space-x-2.5 group flex-shrink-0">
+            
+            {/* 👇 Change 3: Logo click karne par /home par jayega */}
+            <Link to="/home" className="flex items-center space-x-2.5 group flex-shrink-0">
               <div className="w-10 h-10 rounded-full bg-maroon text-cream-50 flex items-center justify-center font-serif text-2xl font-bold group-hover:bg-maroon-hover transition shadow-sm">
                 H
               </div>
@@ -72,8 +74,8 @@ export default function Header() {
 
             <div className="flex items-center space-x-3 sm:space-x-5">
               <nav className="hidden lg:flex space-x-6 text-sm font-medium text-charcoal">
-                <Link to="/" className="hover:text-maroon transition">Shop</Link>
-                <a href="/#artisans" className="hover:text-maroon transition">Our Artisans</a>
+                <Link to="/home" className="hover:text-maroon transition">Shop</Link>
+                <a href="/home#artisans" className="hover:text-maroon transition">Our Artisans</a>
               </nav>
 
               <div className="flex items-center space-x-2 sm:space-x-3 border-l border-cream-200 pl-3 sm:pl-5">
@@ -83,8 +85,8 @@ export default function Header() {
                     className={({ isActive }) =>
                       `flex items-center space-x-2 text-xs font-semibold px-3.5 py-2.5 rounded-full border transition ${
                         isActive
-                          ? 'bg-maroon text-cream-50 border-maroon'
-                          : 'text-maroon border-maroon/20 hover:bg-maroon-light'
+                          ? 'bg-brown text-cream-50 border-brown'
+                          : 'text-brown border-brown/20 hover:bg-brown-light'
                       }`
                     }
                   >

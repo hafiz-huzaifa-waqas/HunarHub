@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout.jsx';
 import ProductCard from '../components/ProductCard.jsx';
@@ -18,12 +18,14 @@ export default function Home() {
   const [filter, setFilter] = useState('all');
   const [quickView, setQuickView] = useState(null);
 
+  // 👇 Scroll ke liye Ref (Naya add kiya)
+  const scrollRef = useRef(null);
+
   useEffect(() => {
     let cancelled = false;
     api('/products')
       .then((data) => {
         if (cancelled) return;
-        // Accept either [ ... ] or { products: [ ... ] }
         const rows = Array.isArray(data) ? data : data.products || [];
         setProducts(rows.map(normalizeProduct).filter((p) => p.active));
       })
@@ -32,7 +34,6 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
-  // Filter products and keep only ONE per seller
   const visible = useMemo(() => {
     const filtered = products.filter((p) => {
       const okCat = filter === 'all' || p.filter === filter;
@@ -44,7 +45,6 @@ export default function Home() {
       return okCat && okSearch;
     });
 
-    // Unique Seller Logic: Har seller ka sirf pehla product dikhao
     const uniqueSellers = new Map();
     filtered.forEach((product) => {
       if (!uniqueSellers.has(product.sellerId)) {
@@ -53,6 +53,14 @@ export default function Home() {
     });
     return Array.from(uniqueSellers.values());
   }, [products, filter, query]);
+
+  // 👇 Left/Right Scroll karne ka function (Naya add kiya)
+  const scroll = (direction) => {
+    if (scrollRef.current) {
+      const scrollAmount = direction === 'left' ? -350 : 350;
+      scrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   return (
     <Layout>
@@ -160,6 +168,7 @@ export default function Home() {
       {/* PRODUCTS */}
       <section id="featured" className="py-16 md:py-24 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-6">
             <div>
               <span className="text-xs uppercase font-bold tracking-widest text-maroon">Handcrafted collections</span>
@@ -184,9 +193,42 @@ export default function Home() {
             </div>
           </div>
 
+          {/* 👇 Yahan se 2-Line Scroll Wala Code Shuru Hota Hai */}
+          {!loading && !error && visible.length > 0 && (
+            <div className="relative group/carousel">
+              
+              {/* Left Button */}
+              <button 
+                onClick={() => scroll('left')} 
+                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-20 w-12 h-12 bg-white rounded-full shadow-lg border border-cream-200 flex items-center justify-center text-charcoal hover:bg-maroon hover:text-white transition-all opacity-0 group-hover/carousel:opacity-100 hidden md:flex"
+              >
+                <i className="fa-solid fa-chevron-left text-lg"></i>
+              </button>
+
+              {/* Products Grid (2 Lines with Horizontal Scroll) */}
+              <div 
+                ref={scrollRef}
+                className="grid grid-rows-2 grid-flow-col gap-6 overflow-x-auto no-scrollbar scroll-smooth pb-4"
+                style={{ gridAutoColumns: 'calc(25% - 18px)' }} 
+              >
+                {visible.map((p) => (
+                  <ProductCard key={p.id} product={p} onQuickView={setQuickView} onAdd={addToCart} />
+                ))}
+              </div>
+
+              {/* Right Button */}
+              <button 
+                onClick={() => scroll('right')} 
+                className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-20 w-12 h-12 bg-white rounded-full shadow-lg border border-cream-200 flex items-center justify-center text-charcoal hover:bg-maroon hover:text-white transition-all opacity-0 group-hover/carousel:opacity-100 hidden md:flex"
+              >
+                <i className="fa-solid fa-chevron-right text-lg"></i>
+              </button>
+            </div>
+          )}
+
           {loading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[...Array(4)].map((_, i) => (
+              {[...Array(8)].map((_, i) => (
                 <div key={i} className="h-80 rounded-2xl bg-cream-100 animate-pulse" />
               ))}
             </div>
@@ -205,14 +247,6 @@ export default function Home() {
               <i className="fa-solid fa-store-slash text-4xl text-cream-300 mb-3"></i>
               <p className="text-base font-semibold text-charcoal">No items found</p>
               <p className="text-xs text-muted mt-1">Try a different search or category.</p>
-            </div>
-          )}
-
-          {!loading && !error && visible.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {visible.map((p) => (
-                <ProductCard key={p.id} product={p} onQuickView={setQuickView} onAdd={addToCart} />
-              ))}
             </div>
           )}
         </div>

@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // 👈 Naya import
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx'; // 👈 Naya import
 
 export default function LandingPage() {
   const heroStageRef = useRef(null);
   const navigate = useNavigate();
-  const [isNavigating, setIsNavigating] = useState(false); // 👈 Animation ke liye state
+  const { isLoggedIn } = useAuth(); // 👈 Auth state check
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // 👇 Agar user logged in hai, toh Landing Page skip karke direct Home bhejo
+  useEffect(() => {
+    if (isLoggedIn) {
+      navigate('/home', { replace: true });
+    }
+  }, [isLoggedIn, navigate]);
 
   useEffect(() => {
     const stage = heroStageRef.current;
@@ -30,19 +39,19 @@ export default function LandingPage() {
     return () => observer.disconnect();
   }, []);
 
-  // 👇 Zabardast Transition Function
   const handleGetStarted = (e) => {
-    e.preventDefault(); // Default link behavior rok diya
-    setIsNavigating(true); // Animation start ki
+    e.preventDefault();
+    setIsNavigating(true);
     
-    // 800ms (0.8 second) baad naye page par bhej dega
     setTimeout(() => {
       navigate('/home');
     }, 800); 
   };
 
+  // Agar user logged in hai, toh redirect hone tak kuch mat dikhao (optional blank screen)
+  if (isLoggedIn) return null;
+
   return (
-    // 👇 Poora page fade + zoom out hoga jab isNavigating true hoga
     <div 
       className={`bg-[#faf8f6] text-[#2b170e] min-h-screen selection:bg-[#6e1a27] selection:text-white transition-all duration-700 ease-in-out ${
         isNavigating ? 'opacity-0 scale-95 blur-sm' : 'opacity-100 scale-100 blur-0'
@@ -50,11 +59,9 @@ export default function LandingPage() {
     >
       
       {/* Header */}
-            {/* Header */}
       <header className="w-full bg-[#faf8f6]/90 backdrop-blur-md px-6 lg:px-12 py-4 flex items-center justify-between border-b border-[#ece5df] sticky top-0 z-50">
         <div className="max-w-7xl w-full mx-auto flex items-center justify-between">
           
-          {/* 👇 Yahan baaki pages wala proper logo aur text lagaya hai */}
           <a aria-label="Hunar Hub Home" className="flex items-center space-x-2.5 group flex-shrink-0" href="#">
             <div className="w-10 h-10 rounded-full bg-[#701C28] text-[#FAF9F6] flex items-center justify-center font-serif text-2xl font-bold group-hover:bg-[#58141F] transition shadow-sm">
               H
@@ -89,7 +96,6 @@ export default function LandingPage() {
               
               {/* Left Phone */}
               <div className="shrink-0 animate-phone-left motion-reduce:animate-none" data-anim="phone-left">
-                 {/* ... (Left Phone ka code wesa hi rahega jo aapke paas hai) ... */}
                  <div className="w-[260px] sm:w-[280px] lg:w-[290px] shrink-0 bg-white rounded-[40px] p-3 shadow-[0_24px_50px_-12px_rgba(43,23,14,0.28)] border-[5px] border-[#2b170e] flex flex-col justify-between transition-transform duration-300 hover:-translate-y-1">
                   <div className="w-16 h-3.5 bg-[#2b170e] rounded-full mx-auto mb-3 mt-1"></div>
                   <div className="px-2 pt-1 pb-4 flex flex-col h-full text-left">
@@ -131,7 +137,6 @@ export default function LandingPage() {
                       HUNAR<br/><span className="text-[#6e1a27]">HUB</span>
                     </h1>
                     <p className="text-xs text-[#7a6a63] leading-relaxed max-w-[210px] mb-5 font-normal">Karachi's premier network connecting clients with verified women experts and female artisans.</p>
-                    {/* 👇 Center phone ka button bhi update kiya */}
                     <button 
                       onClick={handleGetStarted}
                       className="get-started-pulse w-full max-w-[240px] bg-gradient-to-r from-[#6e1a27] to-[#8a2434] text-[#ffffff] text-sm font-bold py-3.5 px-6 rounded-full hover:brightness-110 transition-all block text-center shadow-[0_10px_26px_rgba(110,26,39,0.45)] active:scale-95"
@@ -144,7 +149,6 @@ export default function LandingPage() {
 
               {/* Right Phone */}
               <div className="shrink-0 animate-phone-right motion-reduce:animate-none" data-anim="phone-right">
-                {/* ... (Right Phone ka code wesa hi rahega jo aapke paas hai) ... */}
                 <div className="w-[260px] sm:w-[280px] lg:w-[290px] shrink-0 bg-white rounded-[40px] p-3 shadow-[0_24px_50px_-12px_rgba(43,23,14,0.28)] border-[5px] border-[#2b170e] flex flex-col justify-between transition-transform duration-300 hover:-translate-y-1">
                   <div className="w-16 h-3.5 bg-[#2b170e] rounded-full mx-auto mb-3 mt-1"></div>
                   <div className="px-2 pt-1 pb-4 flex flex-col h-full text-left">

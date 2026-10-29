@@ -1,536 +1,996 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import Layout from '../components/Layout.jsx';
 import { api } from '../api.js';
 import { useCart } from '../context/CartContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { formatPrice } from '../utils/products.js';
 
-/* ============================================================
-   CONSTANTS & HELPERS
-   ============================================================ */
+/* ---------- Constants ---------- */
+const NEXT_STATUS = {
+  Placed: ['Confirmed', 'Cancelled'],
+  Confirmed: ['Ready', 'Cancelled'],
+  Ready: ['Delivered'],
+  Delivered: [],
+  Cancelled: [],
+};
 
-const TABS = [
-  { id: 'overview', label: 'Overview', icon: 'fa-chart-pie' },
-  { id: 'sellers', label: 'Verify Sellers', icon: 'fa-user-check' },
-  { id: 'all_sellers', label: 'All Sellers', icon: 'fa-store' }, 
-  { id: 'agents', label: 'Manage Agents', icon: 'fa-users' },
-  { id: 'commission', label: 'Commission Rates', icon: 'fa-percent' },
-  { id: 'reports', label: 'Reports', icon: 'fa-flag' },
-  { id: 'payouts', label: 'Payouts', icon: 'fa-money-bill-transfer' },
-];
+const ACTION_LABEL = {
+  Confirmed: 'Confirm',
+  Ready: 'Mark ready',
+  Delivered: 'Mark delivered',
+  Cancelled: 'Cancel',
+};
 
-const STATUS_STYLES = {
+const STATUS_STYLE = {
+  Placed: 'bg-gold-bg text-gold-soft border-gold/30',
+  Confirmed: 'bg-brown-light text-brown border-brown/20',
+  Ready: 'bg-maroon-light text-maroon border-maroon/20',
+  Delivered: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Cancelled: 'bg-cream-200 text-muted border-cream-300',
   Pending: 'bg-gold-bg text-gold-soft border-gold/30',
   Verified: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   Inactive: 'bg-cream-200 text-muted border-cream-300',
-  Open: 'bg-maroon-light text-maroon border-maroon/20',
-  Resolved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
-
-const fmtMoney = (n) =>
-  `Rs. ${Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-
 const fmtDateTime = (d) =>
-  d ? new Date(d).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  }) : '—';
+  d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
-const inputClass =
+const inputCls =
   'w-full px-4 py-2.5 text-sm bg-cream-50 border border-cream-300 rounded-xl text-charcoal placeholder-muted focus:outline-none focus:border-maroon focus:ring-1 focus:ring-maroon transition';
 
-function Field({ label, htmlFor, children, hint }) {
+/* ---------- Small UI bits ---------- */
+function Badge({ status }) {
   return (
-    <div>
-      <label htmlFor={htmlFor} className="block text-xs font-semibold text-brown mb-1.5">
-        {label}
-      </label>
-      {children}
-      {hint && <p className="text-[11px] text-muted mt-1">{hint}</p>}
-    </div>
-  );
-}
-
-function StatusBadge({ status }) {
-  return (
-    <span className={`inline-block text-[11px] font-semibold px-2.5 py-1 rounded-full border ${STATUS_STYLES[status] || 'bg-cream-200 text-muted border-cream-300'}`}>
+    <span className={`inline-block text-[11px] font-semibold px-2.5 py-1 rounded-full border ${STATUS_STYLE[status] || 'bg-cream-200 text-muted border-cream-300'}`}>
       {status}
     </span>
   );
 }
 
-function ErrorBox({ message }) {
-  if (!message) return null;
+function Field({ label, children, hint }) {
   return (
-    <div role="alert" className="flex items-start space-x-2 bg-maroon-light text-maroon text-xs rounded-xl px-4 py-3">
-      <i className="fa-solid fa-circle-exclamation mt-0.5"></i>
-      <span>{message}</span>
-    </div>
+    <label className="block">
+      <span className="block text-xs font-semibold text-brown mb-1.5">{label}</span>
+      {children}
+      {hint && <span className="block text-[11px] text-muted mt-1">{hint}</span>}
+    </label>
   );
 }
 
-function Empty({ icon, title, body }) {
+function Empty({ title, body, action }) {
   return (
-    <div className="py-12 text-center bg-white rounded-2xl border border-cream-200">
-      <i className={`fa-solid ${icon} text-4xl text-cream-300 mb-3`}></i>
+    <div className="bg-white rounded-2xl border border-cream-200 px-6 py-12 text-center">
       <p className="text-base font-semibold text-charcoal">{title}</p>
       <p className="text-xs text-muted mt-1 max-w-md mx-auto">{body}</p>
+      {action}
     </div>
   );
 }
 
-function Skeleton({ rows = 3 }) {
+function ModalShell({ title, subtitle, onClose, wide, children }) {
   return (
-    <div className="space-y-3">
-      {[...Array(rows)].map((_, i) => (
-        <div key={i} className="h-16 rounded-2xl bg-cream-100 animate-pulse" />
-      ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-charcoal/60 backdrop-blur-sm" onClick={onClose} />
+      <div className={`relative bg-white rounded-3xl shadow-2xl w-full ${wide ? 'max-w-4xl' : 'max-w-lg'} max-h-[90vh] overflow-hidden flex flex-col`}>
+        <div className="px-6 py-4 border-b border-cream-200 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="serif-title text-xl font-bold text-charcoal">{title}</h3>
+            {subtitle && <p className="text-xs text-muted mt-0.5">{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-cream-100 flex items-center justify-center text-muted">
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto">{children}</div>
+      </div>
     </div>
   );
 }
 
-/* ============================================================
-   MAIN PAGE
-   ============================================================ */
-
-export default function AdminDashboard() {
+/* =================================================================
+   MAIN DASHBOARD
+   ================================================================= */
+export default function AgentDashboard() {
+  const { user } = useAuth();
   const { showToast } = useCart();
+
   const [tab, setTab] = useState('overview');
 
-  // Data States
-  const [summary, setSummary] = useState(null);
-  const [pendingSellers, setPendingSellers] = useState([]);
-  const [allSellers, setAllSellers] = useState([]);
-  const [allAgents, setAllAgents] = useState([]);
-  const [rules, setRules] = useState([]);
-  const [reports, setReports] = useState([]);
-  const [payouts, setPayouts] = useState([]);
-  const [agentsList, setAgentsList] = useState([]); // for payout dropdown
+  const [earnings, setEarnings] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [sellers, setSellers] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  // Loading States
-  const [loading, setLoading] = useState({ summary: true, pending: true, allSellers: true, allAgents: true, rules: true, reports: true, payouts: true });
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [productsSeller, setProductsSeller] = useState(null);
+  const [historyOrder, setHistoryOrder] = useState(null);
+  const [reportOrder, setReportOrder] = useState(null);
 
-  /* ---------- Loaders ---------- */
-  const loadSummary = useCallback(() => {
-    setLoading(l => ({ ...l, summary: true }));
-    api('/admin/dashboard').then((d) => setSummary(d.summary || {})).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, summary: false })));
-  }, [showToast]);
-
-  const loadPendingSellers = useCallback(() => {
-    setLoading(l => ({ ...l, pending: true }));
-    api('/admin/sellers/pending').then((d) => setPendingSellers(d.sellers || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, pending: false })));
-  }, [showToast]);
-
-  const loadAllSellers = useCallback(() => {
-    setLoading(l => ({ ...l, allSellers: true }));
-    api('/admin/sellers/all').then((d) => setAllSellers(d.sellers || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, allSellers: false })));
-  }, [showToast]);
-
-  const loadAllAgents = useCallback(() => {
-    setLoading(l => ({ ...l, allAgents: true }));
-    api('/admin/agents/all').then((d) => setAllAgents(d.agents || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, allAgents: false })));
-  }, [showToast]);
-
-  const loadRules = useCallback(() => {
-    setLoading(l => ({ ...l, rules: true }));
-    api('/admin/commission-rules').then((d) => setRules(d.rules || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, rules: false })));
-  }, [showToast]);
-
-  const loadReports = useCallback(() => {
-    setLoading(l => ({ ...l, reports: true }));
-    api('/admin/reports').then((d) => setReports(d.reports || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, reports: false })));
-  }, [showToast]);
-
-  const loadPayouts = useCallback(() => {
-    setLoading(l => ({ ...l, payouts: true }));
-    api('/admin/payouts').then((d) => setPayouts(d.payouts || [])).catch((e) => showToast(e.message)).finally(() => setLoading(l => ({ ...l, payouts: false })));
-  }, [showToast]);
-
-  const loadAgentsDropdown = useCallback(() => {
-    api('/admin/agents').then((d) => setAgentsList(d.agents || [])).catch((e) => console.error(e));
+  // ---------- Loaders ----------
+  const loadEarnings = useCallback(async () => {
+    const d = await api('/agent/earnings');
+    setEarnings(d.earnings);
+  }, []);
+  const loadOrders = useCallback(async () => {
+    const d = await api('/agent/orders');
+    setOrders(d.orders || []);
+  }, []);
+  const loadSellers = useCallback(async () => {
+    const d = await api('/agent/sellers');
+    setSellers(d.sellers || []);
   }, []);
 
   useEffect(() => {
-    loadSummary();
-    loadPendingSellers();
-    loadAllSellers();
-    loadAllAgents();
-    loadRules();
-    loadReports();
-    loadPayouts();
-    loadAgentsDropdown();
-  }, [loadSummary, loadPendingSellers, loadAllSellers, loadAllAgents, loadRules, loadReports, loadPayouts, loadAgentsDropdown]);
+    (async () => {
+      try {
+        await Promise.all([loadEarnings(), loadOrders(), loadSellers()]);
+      } catch (e) {
+        setLoadError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    Promise.allSettled([api('/regions'), api('/categories')]).then(([r, c]) => {
+      if (r.status === 'fulfilled') setRegions(r.value.regions || []);
+      if (c.status === 'fulfilled') setCategories(c.value.categories || []);
+    });
+  }, [loadEarnings, loadOrders, loadSellers]);
 
-  /* ---------- Actions ---------- */
+  // ---------- Helpers ----------
+  const sellerName = (id) => sellers.find((s) => s.seller_id === id)?.name || `Seller #${id}`;
+  const categoryName = (id) => categories.find((c) => c.category_id === id)?.name || `#${id}`;
+  const regionName = (id) => regions.find((r) => r.region_id === id)?.name || `#${id}`;
 
-  const verifySeller = async (sellerId) => {
-    if (!window.confirm(`Verify seller #${sellerId}?`)) return;
+  // ---------- Order status update ----------
+  const [busyOrder, setBusyOrder] = useState(null);
+  async function updateStatus(orderId, status) {
+    if (status === 'Cancelled' && !window.confirm(`Cancel order #${orderId}? Stock will be returned.`)) return;
+    setBusyOrder(orderId);
     try {
-      await api(`/admin/sellers/${sellerId}/verify`, { method: 'PUT' });
-      showToast?.(`Seller verified`);
-      loadPendingSellers(); loadAllSellers(); loadSummary();
-    } catch (err) { showToast?.(err.message); }
-  };
-
-  const unverifySeller = async (sellerId) => {
-    if (!window.confirm("Unverify this seller? Their products will be hidden until verified again.")) return;
-    try {
-      await api(`/admin/sellers/${sellerId}/unverify`, { method: 'PUT' });
-      showToast?.('Seller moved to Pending');
-      loadAllSellers(); loadPendingSellers(); loadSummary();
-    } catch (err) { showToast?.(err.message); }
-  };
-
-  const removeSeller = async (sellerId) => {
-    if (!window.confirm("Remove this seller? Their products will be hidden.")) return;
-    try {
-      await api(`/admin/sellers/${sellerId}/remove`, { method: 'PUT' });
-      showToast?.('Seller removed');
-      loadAllSellers(); loadPendingSellers(); loadSummary();
-    } catch (err) { showToast?.(err.message); }
-  };
-
-  const deleteAgent = async (agentId) => {
-    if (!window.confirm("Are you sure you want to delete this agent? This action cannot be undone.")) return;
-    try {
-      await api(`/admin/agents/${agentId}`, { method: 'DELETE' });
-      showToast?.('Agent deleted');
-      loadAllAgents(); loadAgentsDropdown();
-    } catch (err) { showToast?.(err.message); }
-  };
-
-  const createAgent = async ({ name, contact, password, region_id }) => {
-    try {
-      await api('/admin/agents', {
-        method: 'POST',
-        body: { name, contact, password, region_id: Number(region_id) }
+      await api(`/agent/orders/${orderId}/status`, {
+        method: 'PUT',
+        body: { status },
       });
-      showToast?.('Agent created successfully');
-      loadAllAgents(); loadAgentsDropdown();
-      return true;
-    } catch (err) {
-      showToast?.(err.message);
-      return false;
+      setOrders((prev) => prev.map((o) => (o.order_id === orderId ? { ...o, status } : o)));
+      showToast?.(`Order #${orderId} → ${status}`);
+      if (status === 'Delivered') loadEarnings().catch(() => {});
+    } catch (e) {
+      showToast?.(e.message);
+    } finally {
+      setBusyOrder(null);
     }
-  };
+  }
 
-  const saveCommission = async (categoryId, pct) => {
-    const num = Number(pct);
-    if (!Number.isFinite(num) || num < 0 || num > 100) return showToast?.('Commission must be 0-100');
-    try {
-      await api(`/admin/commission-rules/${categoryId}`, { method: 'PUT', body: { commission_percentage: num } });
-      showToast?.('Rate saved'); loadRules();
-    } catch (err) { showToast?.(err.message); }
-  };
+  // ---------- Derived ----------
+  const stats = useState(() => {
+    const earned = Number(earnings?.total_earned ?? 0);
+    const paid = Number(earnings?.total_paid ?? 0);
+    return {
+      earned,
+      paid,
+      pending: Math.max(0, Number(earnings?.pending ?? earned - paid)),
+      activeSellers: sellers.filter((s) => s.status === 'Verified').length,
+    };
+  })[0];
 
-  const resolveReport = async (reportId) => {
-    if (!window.confirm(`Mark report #${reportId} as Resolved?`)) return;
-    try {
-      await api(`/admin/reports/${reportId}/resolve`, { method: 'PUT' });
-      showToast?.(`Report resolved`); loadReports(); loadSummary();
-    } catch (err) { showToast?.(err.message); }
-  };
+  const pendingCount = orders.filter((o) => !['Delivered', 'Cancelled'].includes(o.status)).length;
 
-  const recordPayout = async ({ agent_id, amount, paid_on }) => {
-    try {
-      await api('/admin/payouts', { method: 'POST', body: { agent_id: Number(agent_id), amount: Number(amount), paid_on } });
-      showToast?.('Payout recorded'); loadPayouts(); loadSummary();
-      return true;
-    } catch (err) { showToast?.(err.message); return false; }
-  };
+  const TABS = [
+    { id: 'overview', label: 'Overview', icon: 'fa-chart-pie' },
+    { id: 'sellers', label: `My Sellers (${sellers.length})`, icon: 'fa-store' },
+    { id: 'orders', label: `Orders${pendingCount ? ` (${pendingCount})` : ''}`, icon: 'fa-box' },
+  ];
 
-  /* ---------- Render ---------- */
+  if (loading) {
+    return (
+      <Layout>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+          <div className="h-12 w-64 bg-cream-100 rounded-2xl animate-pulse mb-4" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => <div key={i} className="h-28 bg-cream-100 rounded-2xl animate-pulse" />)}
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
         {/* Header */}
-        <div className="mb-8">
-          <span className="text-xs uppercase font-bold tracking-widest text-maroon">Admin panel</span>
-          <h1 className="serif-title text-3xl sm:text-4xl md:text-5xl font-bold text-charcoal mt-1">Platform administration</h1>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <span className="text-xs uppercase font-bold tracking-widest text-maroon">Agent workspace</span>
+            <h1 className="serif-title text-3xl sm:text-4xl font-bold text-charcoal mt-1">
+              Welcome{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+            </h1>
+            <p className="text-sm text-muted mt-1">Manage your sellers, orders, and earnings.</p>
+          </div>
+          <button
+            onClick={() => setRegisterOpen(true)}
+            className="bg-maroon hover:bg-maroon-hover text-cream-50 font-medium px-5 py-2.5 rounded-full text-sm shadow-warm transition flex items-center gap-2"
+          >
+            <i className="fa-solid fa-plus text-xs" />
+            Register seller
+          </button>
         </div>
+
+        {loadError && (
+          <div className="mb-4 text-xs text-maroon bg-maroon-light border border-maroon/20 rounded-xl px-4 py-3">
+            Couldn't load some data: {loadError}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 overflow-x-auto no-scrollbar border-b border-cream-200 mb-6">
           {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition flex items-center gap-2 ${tab === t.id ? 'border-maroon text-maroon' : 'border-transparent text-muted hover:text-charcoal'}`}>
-              <i className={`fa-solid ${t.icon} text-xs`} />{t.label}
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition flex items-center gap-2 ${
+                tab === t.id ? 'border-maroon text-maroon' : 'border-transparent text-muted hover:text-charcoal'
+              }`}
+            >
+              <i className={`fa-solid ${t.icon} text-xs`} />
+              {t.label}
             </button>
           ))}
         </div>
 
         {/* ===== OVERVIEW ===== */}
         {tab === 'overview' && (
-          <section>
-            {loading.summary ? <Skeleton rows={2} /> : summary && (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                  <StatCard label="Total users" value={summary.total_users} icon="fa-users" tone="maroon" />
-                  <StatCard label="Total sellers" value={summary.total_sellers} icon="fa-store" tone="brown" />
-                  <StatCard label="Verified sellers" value={summary.verified_sellers} icon="fa-circle-check" tone="emerald" />
-                  <StatCard label="Pending sellers" value={summary.pending_sellers} icon="fa-hourglass-half" tone="gold" />
-                  <StatCard label="Total products" value={summary.total_products} icon="fa-box" tone="maroon" />
-                  <StatCard label="Total orders" value={summary.total_orders} icon="fa-receipt" tone="brown" />
-                  <StatCard label="Delivered orders" value={summary.delivered_orders} icon="fa-truck-fast" tone="emerald" />
-                  <StatCard label="Open reports" value={summary.open_reports} icon="fa-flag" tone="gold" />
-                </div>
-              </>
-            )}
-          </section>
-        )}
-
-        {/* ===== VERIFY SELLERS ===== */}
-        {tab === 'sellers' && (
-          <section>
-            <h2 className="text-lg font-bold text-charcoal mb-4">Pending sellers</h2>
-            {loading.pending ? <Skeleton rows={3} /> : pendingSellers.length === 0 ? (
-              <Empty icon="fa-circle-check" title="All caught up" body="No sellers waiting for verification." />
-            ) : (
-              <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
-                <table className="w-full text-sm">
-                  <thead className="bg-cream-100 text-charcoal">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-bold">Seller</th>
-                      <th className="px-4 py-3 text-left font-bold">Agent</th>
-                      <th className="px-4 py-3 text-right font-bold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingSellers.map((s) => (
-                      <tr key={s.seller_id} className="border-t border-cream-200">
-                        <td className="px-4 py-3"><div className="font-semibold">{s.name}</div><div className="text-xs text-muted">{s.contact}</div></td>
-                        <td className="px-4 py-3 text-muted">{s.managed_by_agent}</td>
-                        <td className="px-4 py-3 text-right">
-                          <button onClick={() => verifySeller(s.seller_id)} className="text-xs font-semibold bg-maroon text-cream-50 px-3.5 py-1.5 rounded-full hover:bg-maroon-hover">Verify</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-cream-200 shadow-card">
+                <p className="text-[11px] uppercase text-muted font-semibold">Total earned</p>
+                <p className="serif-title text-2xl font-bold text-charcoal mt-0.5">{formatPrice(stats.earned)}</p>
               </div>
-            )}
-          </section>
-        )}
-
-        {/* ===== ALL SELLERS ===== */}
-        {tab === 'all_sellers' && (
-          <section>
-            <h2 className="text-lg font-bold text-charcoal mb-4">All Registered Sellers</h2>
-            {loading.allSellers ? <Skeleton rows={4} /> : (
-              <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
-                <table className="w-full text-sm">
-                  <thead className="bg-cream-100 text-charcoal">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-bold">Seller</th>
-                      <th className="px-4 py-3 text-left font-bold">Agent</th>
-                      <th className="px-4 py-3 text-left font-bold">Status</th>
-                      <th className="px-4 py-3 text-right font-bold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allSellers.map(s => (
-                      <tr key={s.seller_id} className="border-t border-cream-200 hover:bg-cream-50">
-                        <td className="px-4 py-3 font-semibold text-charcoal">{s.name}</td>
-                        <td className="px-4 py-3 text-muted">{s.managed_by_agent}</td>
-                        <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                        <td className="px-4 py-3 text-right">
-                          {/* 👇 Unverify Button */}
-                          {s.status === 'Verified' && (
-                            <button 
-                              onClick={() => unverifySeller(s.seller_id)} 
-                              className="text-xs text-gold-soft font-semibold border border-gold/30 px-3 py-1 rounded hover:bg-gold-bg mr-2 transition"
-                            >
-                              Unverify
-                            </button>
-                          )}
-                          
-                          {/* Remove Button */}
-                          {s.status !== 'Inactive' && (
-                            <button onClick={() => removeSeller(s.seller_id)} className="text-xs text-red-600 font-semibold border border-red-200 px-3 py-1 rounded hover:bg-red-50 transition">
-                              Remove
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="bg-white p-5 rounded-2xl border border-cream-200 shadow-card">
+                <p className="text-[11px] uppercase text-muted font-semibold">Paid out</p>
+                <p className="serif-title text-2xl font-bold text-charcoal mt-0.5">{formatPrice(stats.paid)}</p>
               </div>
-            )}
-          </section>
-        )}
+              <div className="bg-maroon-light p-5 rounded-2xl border border-maroon/30 shadow-card">
+                <p className="text-[11px] uppercase text-maroon font-semibold">Pending commission</p>
+                <p className="serif-title text-2xl font-bold text-maroon mt-0.5">{formatPrice(stats.pending)}</p>
+              </div>
+            </div>
 
-        {/* ===== MANAGE AGENTS ===== */}
-        {tab === 'agents' && (
-          <section>
-            <div className="grid lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <h2 className="text-lg font-bold text-charcoal mb-4">All Agents</h2>
-                {loading.allAgents ? <Skeleton rows={4} /> : (
-                  <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
-                    <table className="w-full text-sm">
-                      <thead className="bg-cream-100 text-charcoal">
-                        <tr>
-                          <th className="px-4 py-3 text-left font-bold">Agent Name</th>
-                          <th className="px-4 py-3 text-left font-bold">Contact / Region</th>
-                          <th className="px-4 py-3 text-right font-bold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {allAgents.map(a => (
-                          <tr key={a.agent_id} className="border-t border-cream-200 hover:bg-cream-50">
-                            <td className="px-4 py-3 font-semibold text-charcoal">{a.name}</td>
-                            <td className="px-4 py-3">
-                              <div className="text-xs">{a.contact}</div>
-                              <div className="text-xs text-muted">{a.region_name}</div>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                               <button onClick={() => deleteAgent(a.agent_id)} className="text-xs text-red-600 font-semibold border border-red-200 px-3 py-1 rounded hover:bg-red-50">Delete</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-charcoal">Recent orders</h2>
+                {orders.length > 5 && (
+                  <button onClick={() => setTab('orders')} className="text-xs font-semibold text-maroon hover:underline">
+                    See all {orders.length}
+                  </button>
                 )}
               </div>
-              <div>
-                 <h2 className="text-lg font-bold text-charcoal mb-4">Add New Agent</h2>
-                 <AddAgentForm onAdd={createAgent} />
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ===== COMMISSION ===== */}
-        {tab === 'commission' && (
-          <section>
-            <h2 className="text-lg font-bold text-charcoal mb-4">Commission rates</h2>
-            {loading.rules ? <Skeleton rows={3} /> : (
-              <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
-                <table className="w-full text-sm">
-                  <thead className="bg-cream-100"><tr><th className="px-4 py-3 text-left">Category</th><th className="px-4 py-3 text-left">Rate %</th><th className="px-4 py-3 text-right">Save</th></tr></thead>
-                  <tbody>{rules.map((r) => <CommissionRow key={r.category_id} rule={r} onSave={saveCommission} />)}</tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* ===== REPORTS ===== */}
-        {tab === 'reports' && (
-          <section>
-            <h2 className="text-lg font-bold text-charcoal mb-4">All reports</h2>
-            {loading.reports ? <Skeleton rows={3} /> : reports.length === 0 ? <Empty icon="fa-flag" title="No reports" body="All clear." /> : (
-              <div className="space-y-3">
-                {reports.map((r) => (
-                  <div key={r.report_id} className="bg-white rounded-2xl border border-cream-200 p-5 flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1"><span className="font-semibold text-charcoal">Report #{r.report_id}</span><StatusBadge status={r.status} /></div>
-                      <p className="text-xs text-muted mb-2">Order #{r.order_id} · By {r.filed_by}</p>
-                      <p className="text-sm text-charcoal">{r.description}</p>
-                    </div>
-                    {r.status === 'Open' && <button onClick={() => resolveReport(r.report_id)} className="bg-maroon text-cream-50 px-4 py-2 rounded-full text-xs">Resolve</button>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* ===== PAYOUTS ===== */}
-        {tab === 'payouts' && (
-          <section className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            <div className="lg:col-span-3">
-              <h2 className="text-lg font-bold text-charcoal mb-4">Payout history</h2>
-              {loading.payouts ? <Skeleton rows={3} /> : (
-                <div className="overflow-x-auto bg-white rounded-2xl border border-cream-200 shadow-card">
-                  <table className="w-full text-sm">
-                    <thead className="bg-cream-100"><tr><th className="px-4 py-3 text-left">ID</th><th className="px-4 py-3 text-left">Agent</th><th className="px-4 py-3 text-left">Amount</th><th className="px-4 py-3 text-left">Date</th></tr></thead>
-                    <tbody>{payouts.map((p) => (<tr key={p.payout_id} className="border-t border-cream-200"><td className="px-4 py-3">#{p.payout_id}</td><td className="px-4 py-3">{p.agent_name}</td><td className="px-4 py-3 font-semibold text-maroon">{fmtMoney(p.amount)}</td><td className="px-4 py-3 text-xs text-muted">{fmtDate(p.paid_on)}</td></tr>))}</tbody>
-                  </table>
+              {orders.length === 0 ? (
+                <Empty title="No orders yet" body="Orders from your sellers' customers will show up here." />
+              ) : (
+                <div className="space-y-3">
+                  {orders.slice(0, 5).map((o) => (
+                    <OrderRow
+                      key={o.order_id}
+                      order={o}
+                      sellerName={sellerName(o.seller_id)}
+                      busyOrder={busyOrder}
+                      onUpdate={updateStatus}
+                      onHistory={setHistoryOrder}
+                      onReport={setReportOrder}
+                    />
+                  ))}
                 </div>
               )}
-            </div>
-            <div className="lg:col-span-2">
-              <h2 className="text-lg font-bold text-charcoal mb-4">Record a payout</h2>
-              <PayoutForm onSubmit={recordPayout} agents={agentsList} />
+            </section>
+          </div>
+        )}
+
+        {/* ===== SELLERS ===== */}
+        {tab === 'sellers' && (
+          <div className="space-y-4">
+            {sellers.length === 0 ? (
+              <Empty
+                title="No sellers yet"
+                body="Register your first seller to start listing products."
+                action={
+                  <button
+                    onClick={() => setRegisterOpen(true)}
+                    className="mt-4 bg-maroon hover:bg-maroon-hover text-cream-50 font-medium px-5 py-2.5 rounded-full text-sm"
+                  >
+                    Register seller
+                  </button>
+                }
+              />
+            ) : (
+              <div className="bg-white rounded-2xl border border-cream-200 shadow-card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-cream-100 text-charcoal">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Seller</th>
+                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Category</th>
+                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Region</th>
+                        <th className="px-4 py-3 text-left text-[11px] uppercase tracking-wider font-bold">Status</th>
+                        <th className="px-4 py-3 text-right text-[11px] uppercase tracking-wider font-bold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sellers.map((s) => (
+                        <tr key={s.seller_id} className="border-t border-cream-200 hover:bg-cream-50">
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-charcoal">{s.name}</div>
+                            <div className="text-xs text-muted">{s.contact}</div>
+                          </td>
+                          <td className="px-4 py-3">{categoryName(s.category_id)}</td>
+                          <td className="px-4 py-3">{regionName(s.region_id)}</td>
+                          <td className="px-4 py-3"><Badge status={s.status} /></td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => setProductsSeller(s)}
+                              className="text-xs font-semibold text-maroon hover:underline"
+                            >
+                              Manage products
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== ORDERS ===== */}
+        {tab === 'orders' && (
+          <section>
+            <div className="space-y-3">
+              {orders.length === 0 ? (
+                <Empty title="No orders yet" body="Orders from your sellers' customers will show up here." />
+              ) : (
+                orders.map((o) => (
+                  <OrderRow
+                    key={o.order_id}
+                    order={o}
+                    sellerName={sellerName(o.seller_id)}
+                    busyOrder={busyOrder}
+                    onUpdate={updateStatus}
+                    onHistory={setHistoryOrder}
+                    onReport={setReportOrder}
+                  />
+                ))
+              )}
             </div>
           </section>
         )}
       </div>
+
+      {/* Modals */}
+      {registerOpen && (
+        <RegisterSellerModal
+          regions={regions}
+          categories={categories}
+          onClose={() => setRegisterOpen(false)}
+          onCreated={() => {
+            setRegisterOpen(false);
+            showToast?.('Seller registered. Admin will verify soon.');
+            loadSellers();
+          }}
+        />
+      )}
+
+      {productsSeller && (
+        <ManageProductsModal
+          seller={productsSeller}
+          categories={categories}
+          onClose={() => setProductsSeller(null)}
+          onChanged={loadSellers}
+        />
+      )}
+
+      {historyOrder && (
+        <OrderHistoryModal order={historyOrder} onClose={() => setHistoryOrder(null)} />
+      )}
+
+      {reportOrder && (
+        <FileReportModal
+          order={reportOrder}
+          onClose={() => setReportOrder(null)}
+          onFiled={() => {
+            setReportOrder(null);
+            showToast?.('Report filed. Admin will review it.');
+          }}
+        />
+      )}
     </Layout>
   );
 }
 
-/* ============================================================
-   SUB-COMPONENTS
-   ============================================================ */
+/* ===================== Sub-components ===================== */
 
-function StatCard({ label, value, icon, tone = 'maroon' }) {
-  const tones = { maroon: 'bg-maroon-light text-maroon', brown: 'bg-brown-light text-brown', gold: 'bg-gold-bg text-gold-soft', emerald: 'bg-emerald-50 text-emerald-700' };
+function OrderRow({ order, sellerName, busyOrder, onUpdate, onHistory, onReport }) {
+  const next = NEXT_STATUS[order.status] || [];
+  const items = order.items || [];
+  const firstItem = items[0];
+  const extraCount = items.length - 1;
+
   return (
-    <div className="bg-white p-5 rounded-2xl border border-cream-200 shadow-card">
-      <div className="flex items-start gap-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tones[tone]}`}><i className={`fa-solid ${icon}`} /></div>
-        <div><p className="text-[11px] uppercase text-muted font-semibold">{label}</p><p className="serif-title text-2xl font-bold text-charcoal mt-0.5">{value ?? '—'}</p></div>
+    <div className="bg-white rounded-2xl border border-cream-200 shadow-card hover:shadow-warm transition overflow-hidden p-5">
+      <div className="flex flex-wrap items-start gap-4 mb-3">
+        {/* Product thumbnail */}
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden bg-cream-100 flex-shrink-0 border border-cream-200 relative">
+          {firstItem?.image_url ? (
+            <img
+              src={firstItem.image_url}
+              alt={firstItem.name}
+              className="w-full h-full object-cover"
+            />
+          ) : null}
+          <div className={`absolute inset-0 flex items-center justify-center text-cream-300 ${firstItem?.image_url ? 'hidden' : ''}`}>
+            <i className="fa-solid fa-box text-xl" />
+          </div>
+          {extraCount > 0 && (
+            <span className="absolute bottom-1 right-1 bg-charcoal/80 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+              +{extraCount}
+            </span>
+          )}
+        </div>
+
+        {/* Order info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-bold text-charcoal">Order #{order.order_id}</h3>
+            <Badge status={order.status} />
+          </div>
+          <p className="text-xs text-muted mt-0.5">
+            {sellerName} · {fmtDate(order.order_date)}
+          </p>
+          {firstItem && (
+            <p className="text-xs text-charcoal mt-1 line-clamp-1">
+              <i className="fa-solid fa-tag text-muted mr-1 text-[10px]" />
+              {firstItem.name}
+              {extraCount > 0 && (
+                <span className="text-muted"> + {extraCount} more</span>
+              )}
+            </p>
+          )}
+        </div>
+
+        {/* Total */}
+        <p className="serif-title text-xl font-bold text-maroon flex-shrink-0">
+          {formatPrice(order.total_amount ?? (Number(order.items_total || 0) + Number(order.shipping_fee || 0)))}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-cream-200">
+        {next.length > 0 ? (
+          <>
+            <span className="text-[11px] uppercase tracking-widest text-muted font-semibold mr-1">
+              Update:
+            </span>
+            {next.map((s) => (
+              <button
+                key={s}
+                disabled={busyOrder === order.order_id}
+                onClick={() => onUpdate(order.order_id, s)}
+                className={
+                  s === 'Cancelled'
+                    ? 'rounded-full border border-red-300 px-4 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 transition'
+                    : 'rounded-full bg-maroon px-4 py-1.5 text-xs font-semibold text-cream-50 hover:bg-maroon-hover disabled:opacity-50 transition'
+                }
+              >
+                {ACTION_LABEL[s] || s}
+              </button>
+            ))}
+          </>
+        ) : (
+          <p className="text-xs text-muted italic">No further actions available.</p>
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => onHistory(order)}
+            className="text-xs font-semibold text-muted hover:text-charcoal transition flex items-center gap-1.5"
+          >
+            <i className="fa-solid fa-clock-rotate-left" />
+            History
+          </button>
+          <button
+            onClick={() => onReport(order)}
+            className="text-xs font-semibold text-brown hover:underline flex items-center gap-1.5"
+          >
+            <i className="fa-solid fa-flag" />
+            Report
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function CommissionRow({ rule, onSave }) {
-  const [pct, setPct] = useState(String(rule.commission_percentage));
+function RegisterSellerModal({ regions, categories, onClose, onCreated }) {
+  const [form, setForm] = useState({
+    name: '',
+    contact: '',
+    region_id: '',
+    category_id: '',
+    consent_given: false,
+  });
+  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const dirty = String(rule.commission_percentage) !== String(pct);
+
+  const set = (k) => (e) =>
+    setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!form.name.trim()) return setError('Seller name is required.');
+    if (!form.contact.trim()) return setError('Contact is required.');
+    if (!form.region_id) return setError('Region is required.');
+    if (!form.category_id) return setError('Category is required.');
+    if (!form.consent_given) return setError('Consent is mandatory (BR-1).');
+
+    setSaving(true);
+    try {
+      await api('/agent/sellers', {
+        method: 'POST',
+        body: {
+          name: form.name.trim(),
+          contact: form.contact.trim(),
+          region_id: Number(form.region_id),
+          category_id: Number(form.category_id),
+          consent_given: true,
+        },
+      });
+      onCreated?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <tr className="border-t border-cream-200">
-      <td className="px-4 py-3 font-medium text-charcoal">{rule.category_name}</td>
-      <td className="px-4 py-3"><div className="flex items-center gap-2 max-w-[120px]"><input type="number" value={pct} onChange={(e) => setPct(e.target.value)} className={inputClass} /><span>%</span></div></td>
-      <td className="px-4 py-3 text-right"><button onClick={async () => { setSaving(true); await onSave(rule.category_id, pct); setSaving(false); }} disabled={!dirty || saving} className="bg-maroon text-cream-50 px-3.5 py-1.5 rounded-full text-xs disabled:opacity-50">{saving ? '...' : dirty ? 'Save' : 'Saved'}</button></td>
-    </tr>
+    <ModalShell title="Register new seller" subtitle="Consent is mandatory (BR-1)." onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Seller name">
+          <input className={inputCls} value={form.name} onChange={set('name')} placeholder="Kulsoom Bibi" required />
+        </Field>
+        <Field label="Contact number">
+          <input className={inputCls} value={form.contact} onChange={set('contact')} placeholder="0300-1234567" required />
+        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Region">
+            <select className={inputCls} value={form.region_id} onChange={set('region_id')} required>
+              <option value="">{regions.length ? 'Select region' : 'Loading…'}</option>
+              {regions.map((r) => (
+                <option key={r.region_id} value={r.region_id}>{r.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Main category">
+            <select className={inputCls} value={form.category_id} onChange={set('category_id')} required>
+              <option value="">{categories.length ? 'Select category' : 'Loading…'}</option>
+              {categories.map((c) => (
+                <option key={c.category_id} value={c.category_id}>{c.name}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <label className="flex items-start gap-2 text-xs text-brown">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-maroon"
+            checked={form.consent_given}
+            onChange={set('consent_given')}
+          />
+          <span>This seller has agreed to let me list and manage their products on HunarHub.</span>
+        </label>
+
+        {error && (
+          <div role="alert" className="flex items-start space-x-2 bg-maroon-light text-maroon text-xs rounded-xl px-4 py-3">
+            <i className="fa-solid fa-circle-exclamation mt-0.5"></i>
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-full text-sm font-semibold text-muted hover:text-charcoal">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !form.consent_given}
+            className="bg-maroon hover:bg-maroon-hover disabled:opacity-50 text-cream-50 font-medium px-6 py-2.5 rounded-full text-sm shadow-warm transition"
+          >
+            {saving ? 'Registering…' : 'Register seller'}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }
 
-function PayoutForm({ onSubmit, agents }) {
-  const [form, setForm] = useState({ agent_id: '', amount: '', paid_on: new Date().toISOString().slice(0, 10) });
+function ManageProductsModal({ seller, categories, onClose, onChanged }) {
+  const { showToast } = useCart();
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({
+    name: '', product_type: 'Product', price: '', category_id: '', available_qty: '', image_url: '',
+  });
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const formRef = useRef(null);
+
+  const load = () => {
+    setLoading(true);
+    setError('');
+    api(`/agent/sellers/${seller.seller_id}/products`)
+      .then((d) => setProducts(d.products || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [seller.seller_id]);
+
+  // 👇 Auto Scroll to Top
+  const scrollToForm = () => {
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  const openNew = () => {
+    setEditing('new');
+    setForm({
+      name: '', product_type: 'Product', price: '', category_id: String(seller.category_id || ''),
+      available_qty: '', image_url: '',
+    });
+    setFormError('');
+    scrollToForm();
+  };
+  const openEdit = (p) => {
+    setEditing(p);
+    setForm({
+      name: p.name, product_type: p.product_type, price: String(p.price),
+      category_id: String(p.category_id), available_qty: String(p.available_qty),
+      image_url: p.image_url || '',
+    });
+    setFormError('');
+    scrollToForm();
+  };
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const save = async (e) => {
+    e.preventDefault();
+    setFormError('');
+    if (!form.name.trim()) return setFormError('Name is required.');
+    if (!(Number(form.price) > 0)) return setFormError('Price must be greater than 0.');
+    if (Number(form.available_qty) < 0) return setFormError('Quantity cannot be negative.');
+    if (!form.category_id) return setFormError('Category is required.');
+
+    setSaving(true);
+    try {
+      const body = {
+        name: form.name.trim(),
+        product_type: form.product_type,
+        price: Number(form.price),
+        category_id: Number(form.category_id),
+        available_qty: Number(form.available_qty),
+        image_url: form.image_url.trim() || null,
+      };
+      if (editing === 'new') {
+        await api('/agent/products', { method: 'POST', body: { ...body, seller_id: seller.seller_id } });
+        showToast?.('Product added');
+      } else {
+        await api(`/agent/products/${editing.product_id}`, { method: 'PUT', body });
+        showToast?.('Product updated');
+      }
+      setEditing(null);
+      load();
+      onChanged?.();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleActive = async (p) => {
+    try {
+      await api(`/agent/products/${p.product_id}`, {
+        method: 'PUT',
+        body: { is_active: !p.is_active },
+      });
+      showToast?.(`Product ${p.is_active ? 'deactivated' : 'activated'}`);
+      load();
+    } catch (err) {
+      showToast?.(err.message);
+    }
+  };
+
   return (
-    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit(form); setSaving(false); if (ok) setForm({ agent_id: '', amount: '', paid_on: form.paid_on }); }} className="bg-white rounded-2xl border border-cream-200 shadow-card p-5 space-y-4">
-      <Field label="Select Agent">
-        <select value={form.agent_id} onChange={(e) => setForm({ ...form, agent_id: e.target.value })} className={inputClass} required>
-          <option value="">-- Select Agent --</option>
-          {agents.map((a) => <option key={a.agent_id} value={a.agent_id}>{a.name} (ID: {a.agent_id})</option>)}
-        </select>
-      </Field>
-      <Field label="Amount (Rs.)"><input type="number" min="1" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} required /></Field>
-      <Field label="Paid on"><input type="date" value={form.paid_on} onChange={(e) => setForm({ ...form, paid_on: e.target.value })} className={inputClass} required /></Field>
-      <button type="submit" disabled={saving} className="w-full bg-maroon text-cream-50 py-3 rounded-full font-medium text-sm">{saving ? 'Saving...' : 'Record payout'}</button>
-    </form>
+    <ModalShell
+      title={`Products — ${seller.name}`}
+      subtitle="Add, edit, or deactivate products. Past orders keep a snapshot (BR-7)."
+      onClose={onClose}
+      wide
+    >
+      {/* 👇 Editing Form with scroll ref */}
+      {editing && (
+        <form
+          ref={formRef}
+          onSubmit={save}
+          className="mb-6 p-4 rounded-xl border border-cream-200 bg-cream-50 space-y-3 scroll-mt-4"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <h4 className="font-bold text-charcoal text-sm">
+              {editing === 'new' ? 'Add new product' : `Edit: ${editing.name}`}
+            </h4>
+            <button type="button" onClick={() => setEditing(null)} className="text-xs font-semibold text-muted hover:text-charcoal">
+              Close
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Name">
+              <input className={inputCls} value={form.name} onChange={set('name')} required />
+            </Field>
+            <Field label="Type">
+              <select className={inputCls} value={form.product_type} onChange={set('product_type')}>
+                <option value="Product">Product</option>
+                <option value="Service">Service</option>
+              </select>
+            </Field>
+            <Field label="Price (Rs.)">
+              <input type="number" step="0.01" min="0.01" className={inputCls} value={form.price} onChange={set('price')} required />
+            </Field>
+            <Field label="Available quantity">
+              <input type="number" min="0" className={inputCls} value={form.available_qty} onChange={set('available_qty')} required />
+            </Field>
+            <Field label="Category">
+              <select className={inputCls} value={form.category_id} onChange={set('category_id')} required>
+                <option value="">Select category</option>
+                {categories.map((c) => <option key={c.category_id} value={c.category_id}>{c.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Image URL (optional)">
+              <input className={inputCls} value={form.image_url} onChange={set('image_url')} placeholder="https://…" />
+            </Field>
+          </div>
+
+          {/* Image Preview */}
+          {form.image_url && (
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-white border border-cream-200">
+              <img
+                src={form.image_url}
+                alt="Preview"
+                className="w-16 h-16 rounded-lg object-cover bg-cream-100"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <div>
+                <p className="text-xs font-semibold text-charcoal">Image preview</p>
+                <p className="text-[11px] text-muted">This is how it will appear to customers.</p>
+              </div>
+            </div>
+          )}
+
+          {formError && (
+            <div className="text-xs text-maroon bg-maroon-light border border-maroon/20 rounded-lg px-3 py-2">{formError}</div>
+          )}
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setEditing(null)} className="px-5 py-2.5 rounded-full text-sm font-semibold text-muted hover:text-charcoal">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="bg-maroon hover:bg-maroon-hover disabled:opacity-60 text-cream-50 font-medium px-6 py-2.5 rounded-full text-sm">
+              {saving ? 'Saving…' : editing === 'new' ? 'Add product' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-sm font-semibold text-charcoal">{products.length} product(s)</p>
+          <p className="text-xs text-muted mt-0.5">Preview of what customers see</p>
+        </div>
+        {!editing && (
+          <button onClick={openNew} className="bg-maroon hover:bg-maroon-hover text-cream-50 font-medium px-5 py-2 rounded-full text-xs flex items-center gap-2">
+            <i className="fa-solid fa-plus text-[10px]" /> Add product
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-64 bg-cream-100 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="text-xs text-maroon bg-maroon-light border border-maroon/20 rounded-lg px-3 py-2">{error}</div>
+      )}
+
+      {!loading && !error && products.length === 0 && (
+        <div className="py-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-cream-100 flex items-center justify-center mx-auto mb-3">
+            <i className="fa-solid fa-box-open text-2xl text-muted" />
+          </div>
+          <p className="text-sm font-semibold text-charcoal">No products yet</p>
+          <p className="text-xs text-muted mt-1 mb-5">Add your first product to start selling.</p>
+          <button onClick={openNew} className="bg-maroon hover:bg-maroon-hover text-cream-50 font-medium px-5 py-2.5 rounded-full text-sm">
+            Add product
+          </button>
+        </div>
+      )}
+
+      {/* 👇 Products Grid (Small Boxes) */}
+      {!loading && !error && products.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {products.map((p) => (
+            <div
+              key={p.product_id}
+              className={`bg-white rounded-2xl border overflow-hidden shadow-card hover:shadow-warm transition ${
+                p.is_active ? 'border-cream-200' : 'border-red-200 opacity-75'
+              }`}
+            >
+              <div className="relative aspect-[4/3] bg-cream-100">
+                {p.image_url ? (
+                  <img
+                    src={p.image_url}
+                    alt={p.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <div className={`absolute inset-0 flex items-center justify-center text-cream-300 ${p.image_url ? 'hidden' : ''}`}>
+                  <i className="fa-solid fa-hands-holding-circle text-4xl" />
+                </div>
+
+                <span className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-1 rounded-full border ${p.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                  {p.is_active ? 'Active' : 'Inactive'}
+                </span>
+
+                <span className="absolute top-2 left-2 bg-white/90 backdrop-blur text-brown text-[10px] font-bold px-2 py-1 rounded-full border border-cream-200">
+                  {p.product_type}
+                </span>
+              </div>
+
+              <div className="p-4">
+                <h4 className="font-semibold text-charcoal text-sm line-clamp-2">{p.name}</h4>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="serif-title text-lg font-bold text-maroon">{formatPrice(p.price)}</p>
+                  <p className="text-xs text-muted">
+                    {p.available_qty > 0 ? `${p.available_qty} in stock` : <span className="text-red-600 font-semibold">Sold out</span>}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-cream-200">
+                  <button
+                    onClick={() => openEdit(p)}
+                    className="flex-1 text-xs font-semibold bg-cream-100 hover:bg-cream-200 text-charcoal px-3 py-2 rounded-full transition flex items-center justify-center gap-1.5"
+                  >
+                    <i className="fa-solid fa-pen text-[10px]" /> Edit
+                  </button>
+                  <button
+                    onClick={() => toggleActive(p)}
+                    className={`flex-1 text-xs font-semibold px-3 py-2 rounded-full transition flex items-center justify-center gap-1.5 ${
+                      p.is_active
+                        ? 'bg-red-50 hover:bg-red-100 text-red-700'
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    <i className={`fa-solid ${p.is_active ? 'fa-eye-slash' : 'fa-eye'} text-[10px]`} />
+                    {p.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </ModalShell>
   );
 }
 
-function AddAgentForm({ onAdd }) {
-  const [form, setForm] = useState({ name: '', contact: '', password: '', region_id: '' });
-  const [saving, setSaving] = useState(false);
-  const [regions, setRegions] = useState([]);
+function OrderHistoryModal({ order, onClose }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api('/regions').then(d => setRegions(d.regions || [])).catch(() => {});
-  }, []);
+    api(`/agent/orders/${order.order_id}/history`)
+      .then((d) => setHistory(d.history || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [order.order_id]);
 
   return (
-    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onAdd(form); setSaving(false); if (ok) setForm({ name: '', contact: '', password: '', region_id: '' }); }} className="bg-white rounded-2xl border border-cream-200 shadow-card p-5 space-y-4">
-      <Field label="Name"><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} required /></Field>
-      <Field label="Contact"><input type="text" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} className={inputClass} required /></Field>
-      <Field label="Password"><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inputClass} required /></Field>
-      <Field label="Region">
-        <select value={form.region_id} onChange={(e) => setForm({ ...form, region_id: e.target.value })} className={inputClass} required>
-          <option value="">-- Select Region --</option>
-          {regions.map((r) => <option key={r.region_id} value={r.region_id}>{r.name}</option>)}
-        </select>
-      </Field>
-      <button type="submit" disabled={saving} className="w-full bg-maroon text-cream-50 py-3 rounded-full font-medium text-sm">{saving ? 'Adding...' : 'Add Agent'}</button>
-    </form>
+    <ModalShell title={`Order #${order.order_id} — history`} onClose={onClose}>
+      {loading && <p className="text-sm text-muted">Loading…</p>}
+      {!loading && error && (
+        <div className="text-xs text-maroon bg-maroon-light border border-maroon/20 rounded-lg px-3 py-2">{error}</div>
+      )}
+      {!loading && !error && history.length === 0 && <p className="text-sm text-muted">No history entries.</p>}
+      {!loading && !error && history.length > 0 && (
+        <ol className="space-y-4 border-l-2 border-cream-300 pl-4">
+          {history.map((h, i) => (
+            <li key={i} className="relative">
+              <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-maroon" />
+              <p className="font-semibold text-charcoal text-sm">{h.status}</p>
+              <p className="text-xs text-muted">
+                {fmtDateTime(h.changed_at)} · by {h.changed_by_name || `User #${h.changed_by_user_id}`}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </ModalShell>
+  );
+}
+
+function FileReportModal({ order, onClose, onFiled }) {
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (description.trim().length < 10) {
+      return setError('Please describe the issue (min 10 characters).');
+    }
+    setSaving(true);
+    try {
+      await api('/agent/reports', {
+        method: 'POST',
+        body: { order_id: order.order_id, description: description.trim() },
+      });
+      onFiled?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ModalShell title={`Report order #${order.order_id}`} subtitle="Admin will review it." onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Description">
+          <textarea
+            rows={4}
+            className={inputCls}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What went wrong? Be specific."
+            maxLength={500}
+          />
+        </Field>
+        {error && (
+          <div className="text-xs text-maroon bg-maroon-light border border-maroon/20 rounded-lg px-3 py-2">{error}</div>
+        )}
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-full text-sm font-semibold text-muted hover:text-charcoal">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="bg-maroon hover:bg-maroon-hover disabled:opacity-60 text-cream-50 font-medium px-6 py-2.5 rounded-full text-sm shadow-warm">
+            {saving ? 'Filing…' : 'File report'}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }
